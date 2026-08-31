@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
+import toast from "react-hot-toast";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ProductData = any;
@@ -23,9 +24,19 @@ export default function ProductsPage() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: deleteProduct,
-    onSuccess: () => {
+    mutationFn: async (id: string) => {
+      const res = await deleteProduct(id);
+      if (!res.success) {
+        throw new Error(res.error || "Failed to delete product");
+      }
+      return res;
+    },
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["products"] });
+      toast.success(data?.message || "Product deleted successfully");
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Failed to delete product");
     },
   });
 

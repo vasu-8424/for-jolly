@@ -6,9 +6,8 @@ import { Badge } from "@/components/ui/badge";
 
 export default function PaymentSettingsPage() {
   const gateways = [
+    { id: "razorpay", name: "Razorpay Gateway", description: "Credit / Debit Cards, UPI (GPay, PhonePe, Paytm), Netbanking & Wallets.", enabled: true, tag: "Active" },
     { id: "cod", name: "Cash on Delivery", description: "Collect payment at customer door.", enabled: true, tag: "Default" },
-    { id: "upi", name: "UPI Integration", description: "Direct UPI intent flow for GPay, PhonePe, Paytm.", enabled: true, tag: "Recommended" },
-    { id: "razorpay", name: "Razorpay Gateway", description: "Credit Cards, Netbanking & Wallets.", enabled: false, tag: "Add-on" },
     { id: "wallet", name: "Kakinada Wallet", description: "Allow customers to pay using their store wallet balance.", enabled: true, tag: "Internal" },
   ];
 

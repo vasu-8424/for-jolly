@@ -1,11 +1,11 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function globalSearch(query: string) {
   if (!query || query.trim().length < 2) return { products: [], customers: [], orders: [] };
 
-  const supabase = await createClient();
+  const supabase = await createAdminClient();
   const searchStr = `%${query.trim()}%`;
 
   // Search Products
@@ -17,7 +17,7 @@ export async function globalSearch(query: string) {
 
   // Search Customers
   const { data: customers } = await supabase
-    .from("profiles")
+    .from("users")
     .select("id, full_name, email")
     .or(`full_name.ilike.${searchStr},email.ilike.${searchStr}`)
     .limit(5);

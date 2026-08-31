@@ -1,7 +1,7 @@
 "use client";
 
 import { useTransition, useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { productSchema, type ProductFormValues } from "@/lib/schemas";
 import { createProduct, updateProduct } from "@/actions/products";
@@ -21,8 +21,9 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { ImageIcon, Share2, Heart, Loader2, ArrowLeft } from "lucide-react";
+import { ImageIcon, Share2, Heart, Loader2, ArrowLeft, Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import toast from "react-hot-toast";
 import { ImageUpload } from "@/components/shared/image-upload";
 import { MobilePreview } from "@/components/shared/mobile-preview";
 import {
@@ -52,7 +53,21 @@ export function ProductForm({ initialData }: ProductFormProps) {
 
   const form = useForm<ProductFormValues>({
     resolver: zodResolver(productSchema),
-    defaultValues: initialData || {
+    defaultValues: initialData ? { 
+      ...initialData, 
+      search_tags: Array.isArray(initialData.search_tags) ? initialData.search_tags.join(", ") : (initialData.search_tags || ""),
+      subcategory_id: initialData.subcategory_id || "",
+      description: initialData.description || "",
+      short_description: initialData.short_description || "",
+      brand: initialData.brand || "",
+      barcode: initialData.barcode || "",
+      unit: initialData.unit || "gms",
+      shelf_life: initialData.shelf_life || "",
+      ingredients: initialData.ingredients || "",
+      nutrition_info: initialData.nutrition_info || "",
+      is_unique: initialData.is_unique || (Array.isArray(initialData.labels) && initialData.labels.includes("Unique")),
+      variants: initialData.variants || [] 
+    } : {
       name: "",
       slug: "",
       description: "",
@@ -75,7 +90,14 @@ export function ProductForm({ initialData }: ProductFormProps) {
       labels: [],
       images: [],
       is_available: true,
+      is_unique: false,
+      variants: [],
     },
+  });
+
+  const { fields, append, remove } = useFieldArray({
+    control: form.control,
+    name: "variants",
   });
 
   const onSubmit = (values: ProductFormValues) => {
@@ -88,20 +110,26 @@ export function ProductForm({ initialData }: ProductFormProps) {
       }
 
       if (result.success) {
+        toast.success(initialData?.id ? "Product updated successfully!" : "Product created successfully!");
         router.push("/products");
       } else {
-        alert("Error saving product: " + result.error);
+        toast.error("Error saving product: " + result.error);
       }
     });
   };
 
   const currentValues = form.watch();
 
+  const onError = (errors: any) => {
+    console.error("Form validation errors:", errors);
+    toast.error("Please fill in all required fields correctly. Check the form for red error messages.");
+  };
+
   return (
-    <div className="flex gap-8 w-full">
-      <div className="flex-1">
+    <div className="flex gap-6 h-full max-w-7xl mx-auto">
+      <div className="flex-1 min-w-0">
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={form.handleSubmit(onSubmit, onError)} className="space-y-8">
             <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Button type="button" variant="ghost" size="icon" onClick={() => router.back()}>
@@ -142,7 +170,7 @@ export function ProductForm({ initialData }: ProductFormProps) {
                     <FormItem>
                       <FormLabel>Product Name</FormLabel>
                       <FormControl>
-                        <Input placeholder="e.g. Fresh Organic Tomatoes" {...field} />
+                        <Input placeholder="e.g. Fresh Organic Tomatoes" {...field} value={field.value ?? ""} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -156,7 +184,7 @@ export function ProductForm({ initialData }: ProductFormProps) {
                     <FormItem>
                       <FormLabel>URL Slug</FormLabel>
                       <FormControl>
-                        <Input placeholder="fresh-organic-tomatoes" {...field} />
+                        <Input placeholder="fresh-organic-tomatoes" {...field} value={field.value ?? ""} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -170,7 +198,7 @@ export function ProductForm({ initialData }: ProductFormProps) {
                     <FormItem>
                       <FormLabel>Short Description</FormLabel>
                       <FormControl>
-                        <Textarea placeholder="A brief summary for the product card..." {...field} value={field.value || ""} />
+                        <Textarea placeholder="A brief summary for the product card..." {...field} value={field.value ?? ""} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -184,7 +212,7 @@ export function ProductForm({ initialData }: ProductFormProps) {
                     <FormItem>
                       <FormLabel>Full Description</FormLabel>
                       <FormControl>
-                        <Textarea className="min-h-[150px]" placeholder="Detailed product information..." {...field} value={field.value || ""} />
+                        <Textarea className="min-h-[150px]" placeholder="Detailed product information..." {...field} value={field.value ?? ""} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -199,7 +227,7 @@ export function ProductForm({ initialData }: ProductFormProps) {
                       <FormItem>
                         <FormLabel>Shelf Life</FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g. 6 Months" {...field} />
+                          <Input placeholder="e.g. 6 Months" {...field} value={field.value ?? ""} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -212,7 +240,7 @@ export function ProductForm({ initialData }: ProductFormProps) {
                       <FormItem>
                         <FormLabel>Country of Origin</FormLabel>
                         <FormControl>
-                          <Input placeholder="India" {...field} />
+                          <Input placeholder="India" {...field} value={field.value ?? ""} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -264,7 +292,11 @@ export function ProductForm({ initialData }: ProductFormProps) {
                     <FormItem>
                       <FormLabel>MRP (Maximum Retail Price)</FormLabel>
                       <FormControl>
-                        <Input type="number" {...field} />
+                        <Input 
+                          type="number" 
+                          {...field} 
+                          onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -277,7 +309,11 @@ export function ProductForm({ initialData }: ProductFormProps) {
                     <FormItem>
                       <FormLabel>Selling Price</FormLabel>
                       <FormControl>
-                        <Input type="number" {...field} />
+                        <Input 
+                          type="number" 
+                          {...field} 
+                          onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -286,6 +322,119 @@ export function ProductForm({ initialData }: ProductFormProps) {
               </CardContent>
             </Card>
 
+            <Card className="border-border shadow-sm bg-card/80 backdrop-blur-xl">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <div className="space-y-1">
+                  <CardTitle>Additional Size Variants</CardTitle>
+                  <CardDescription>Add options like 500gms, 250gms with specific pricing.</CardDescription>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={() => append({ weight: 0, unit: "gms", mrp: 0, selling_price: 0, stock: 0 })}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Variant
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {fields.length === 0 && (
+                  <p className="text-sm text-muted-foreground italic text-center py-4 border rounded-lg bg-muted/20">No additional variants added.</p>
+                )}
+                {fields.map((field, index) => (
+                  <div key={field.id} className="flex items-start gap-4 p-4 border rounded-lg bg-background/50 relative group">
+                    <Button 
+                      type="button" 
+                      variant="ghost" 
+                      size="icon" 
+                      className="absolute -top-3 -right-3 h-8 w-8 rounded-full bg-background border text-muted-foreground shadow-sm opacity-0 group-hover:opacity-100 transition-all hover:bg-destructive hover:text-destructive-foreground hover:border-destructive"
+                      onClick={() => remove(index)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                    <div className="grid grid-cols-5 gap-4 flex-1">
+                      <FormField
+                        control={form.control}
+                        name={`variants.${index}.weight`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs">Weight</FormLabel>
+                            <FormControl>
+                              <Input 
+                                type="number" 
+                                {...field} 
+                                onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name={`variants.${index}.unit`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs">Unit</FormLabel>
+                            <FormControl>
+                              <Input placeholder="gms" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name={`variants.${index}.mrp`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs">MRP</FormLabel>
+                            <FormControl>
+                              <Input 
+                                type="number" 
+                                {...field} 
+                                onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name={`variants.${index}.selling_price`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs">Selling Price</FormLabel>
+                            <FormControl>
+                              <Input 
+                                type="number" 
+                                {...field} 
+                                onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name={`variants.${index}.stock`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs">Stock</FormLabel>
+                            <FormControl>
+                              <Input 
+                                type="number" 
+                                {...field} 
+                                onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
             <Card className="border-border shadow-sm bg-card/80 backdrop-blur-xl">
               <CardHeader>
                 <CardTitle>Inventory Management</CardTitle>
@@ -298,7 +447,7 @@ export function ProductForm({ initialData }: ProductFormProps) {
                     <FormItem>
                       <FormLabel>SKU (Stock Keeping Unit)</FormLabel>
                       <FormControl>
-                        <Input placeholder="TOM-ORG-001" {...field} />
+                        <Input placeholder="TOM-ORG-001" {...field} value={field.value ?? ""} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -311,7 +460,7 @@ export function ProductForm({ initialData }: ProductFormProps) {
                     <FormItem>
                       <FormLabel>Barcode (ISBN, UPC, GTIN)</FormLabel>
                       <FormControl>
-                        <Input {...field} />
+                        <Input placeholder="e.g. 8901234567890" {...field} value={field.value ?? ""} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -324,7 +473,11 @@ export function ProductForm({ initialData }: ProductFormProps) {
                     <FormItem>
                       <FormLabel>Current Stock Quantity</FormLabel>
                       <FormControl>
-                        <Input type="number" {...field} />
+                        <Input 
+                          type="number" 
+                          {...field} 
+                          onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -337,7 +490,11 @@ export function ProductForm({ initialData }: ProductFormProps) {
                     <FormItem>
                       <FormLabel>Low Stock Alert Threshold</FormLabel>
                       <FormControl>
-                        <Input type="number" {...field} />
+                        <Input 
+                          type="number" 
+                          {...field} 
+                          onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -386,12 +543,10 @@ export function ProductForm({ initialData }: ProductFormProps) {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Category</FormLabel>
-                      <Select onValueChange={(val) => field.onChange(val)} value={field.value || undefined}>
+                      <Select onValueChange={(val) => field.onChange(val)} value={field.value || ""}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Select a category">
-                              {field.value ? categories.find(c => c.id === field.value)?.name : undefined}
-                            </SelectValue>
+                            <SelectValue placeholder="Select a category" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
@@ -415,6 +570,25 @@ export function ProductForm({ initialData }: ProductFormProps) {
                         <FormLabel className="text-base">Active Product</FormLabel>
                         <FormDescription>
                           If disabled, this product will be hidden from the store.
+                        </FormDescription>
+                      </div>
+                      <FormControl>
+                        <Switch checked={field.value} onCheckedChange={field.onChange} />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="is_unique"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center justify-between rounded-lg border border-indigo-200 bg-indigo-50/50 dark:bg-indigo-950/20 dark:border-indigo-800 p-4 shadow-sm">
+                      <div className="space-y-0.5">
+                        <FormLabel className="text-base font-bold text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5">
+                          ✨ Unique for You
+                        </FormLabel>
+                        <FormDescription className="text-indigo-700/80 dark:text-indigo-300/70">
+                          If enabled, this product will be featured prominently in the &quot;Unique for You&quot; section on the home page.
                         </FormDescription>
                       </div>
                       <FormControl>
@@ -513,14 +687,27 @@ export function ProductForm({ initialData }: ProductFormProps) {
             
             <div className="flex items-center gap-2 mt-1">
               <span className="font-bold text-lg text-foreground">
-                ₹{currentValues.selling_price || "0"}
+                ₹{currentValues.variants && currentValues.variants.length > 0 ? currentValues.variants[0].selling_price : (currentValues.selling_price || "0")}
               </span>
-              {currentValues.mrp > currentValues.selling_price && (
+              {(currentValues.variants && currentValues.variants.length > 0 ? currentValues.variants[0].mrp > currentValues.variants[0].selling_price : currentValues.mrp > currentValues.selling_price) && (
                 <span className="text-sm text-muted-foreground line-through">
-                  ₹{currentValues.mrp}
+                  ₹{currentValues.variants && currentValues.variants.length > 0 ? currentValues.variants[0].mrp : currentValues.mrp}
                 </span>
               )}
             </div>
+
+            {currentValues.variants && currentValues.variants.length > 0 && (
+              <div className="mt-3">
+                <p className="text-sm font-semibold mb-2">Available Sizes</p>
+                <div className="flex flex-wrap gap-2">
+                  {currentValues.variants.map((v: any, i: number) => (
+                    <div key={i} className={`px-3 py-1.5 rounded-lg border text-sm ${i === 0 ? 'bg-primary/10 border-primary text-primary font-medium' : 'bg-background text-muted-foreground'}`}>
+                      {v.weight}{v.unit} - ₹{v.selling_price}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="mt-4 p-4 bg-white dark:bg-card rounded-xl border shadow-sm space-y-4">
               <div>

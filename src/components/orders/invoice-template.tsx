@@ -49,7 +49,7 @@ export function InvoiceTemplate({ order }: { order: any }) {
           {order.order_items?.map((item: any, idx: number) => (
             <tr key={item.id} className="border-b border-gray-200">
               <td className="py-4 text-center">{idx + 1}</td>
-              <td className="py-4 font-medium text-gray-800">{item.product?.name || "Unknown Product"}</td>
+              <td className="py-4 font-medium text-gray-800">{item.product_name || item.product?.name || "Product"}</td>
               <td className="py-4 text-center">{item.quantity}</td>
               <td className="py-4 text-right">₹{item.unit_price.toFixed(2)}</td>
               <td className="py-4 text-right font-medium text-gray-800">₹{item.total_price.toFixed(2)}</td>

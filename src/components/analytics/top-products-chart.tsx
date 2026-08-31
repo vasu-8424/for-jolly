@@ -30,7 +30,7 @@ export function TopProductsChart() {
                 cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }}
                 contentStyle={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))", borderRadius: "8px" }}
                 itemStyle={{ color: "hsl(var(--foreground))" }}
-                formatter={(value: number) => [`${value} Units`, "Sales"]}
+                formatter={(value: any) => [`${value || 0} Units`, "Sales"]}
               />
               <Bar dataKey="sales" radius={[0, 4, 4, 0]} barSize={24}>
                 {data.map((entry, index) => (

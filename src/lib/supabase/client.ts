@@ -1,7 +1,7 @@
 import { createBrowserClient } from '@supabase/ssr'
 
 export function createClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'http://localhost';
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   return createBrowserClient(
     supabaseUrl,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!

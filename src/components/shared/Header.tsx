@@ -14,9 +14,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+import { useRealtimeStatus } from "@/providers/realtime-provider";
+import { logout } from "@/app/(auth)/login/actions";
+import Link from "next/link";
+
 export function Header() {
   const { setTheme, theme } = useTheme();
   const pathname = usePathname();
+  const { isConnected } = useRealtimeStatus();
 
   // Basic breadcrumbs generation
   const pathSegments = pathname.split('/').filter(Boolean);
@@ -34,6 +39,12 @@ export function Header() {
       </div>
       
       <div className="flex items-center gap-3">
+        <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border border-border/60 bg-card/50">
+          <span className={`h-2 w-2 rounded-full ${isConnected ? "bg-emerald-500 animate-pulse" : "bg-amber-500"}`} />
+          <span className="text-muted-foreground font-medium text-[11px]">
+            {isConnected ? "Live Sync" : "Syncing"}
+          </span>
+        </div>
 
         <Button variant="ghost" size="icon" className="relative text-muted-foreground hover:text-foreground">
           <Bell className="h-5 w-5" />
@@ -69,8 +80,17 @@ export function Header() {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>Profile Settings</DropdownMenuItem>
-            <DropdownMenuItem>Log out</DropdownMenuItem>
+            <Link href="/profile" className="w-full">
+              <DropdownMenuItem className="cursor-pointer">
+                Profile Settings
+              </DropdownMenuItem>
+            </Link>
+            <DropdownMenuItem 
+              onClick={() => logout()}
+              className="text-destructive focus:text-destructive cursor-pointer"
+            >
+              Log out
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

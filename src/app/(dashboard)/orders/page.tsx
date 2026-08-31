@@ -107,8 +107,10 @@ export default function OrdersPage() {
                 <Eye className="w-4 h-4 text-muted-foreground hover:text-primary" />
               </Link>
             </Button>
-            <Button variant="ghost" size="icon" title="Download Invoice">
-              <Download className="w-4 h-4 text-muted-foreground hover:text-primary" />
+            <Button variant="ghost" size="icon" asChild title="Download Invoice">
+              <Link href={`/invoice/${order.id}`} target="_blank">
+                <Download className="w-4 h-4 text-muted-foreground hover:text-primary" />
+              </Link>
             </Button>
           </div>
         );

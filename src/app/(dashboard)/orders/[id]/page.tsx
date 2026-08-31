@@ -1,21 +1,26 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
-import { ArrowLeft, Printer, Download, MapPin, Phone, Mail, User } from "lucide-react";
+import { ArrowLeft, Printer, Download, MapPin, Phone, Mail, User, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/layout/page-transition";
-import { getOrderById, updateOrderStatus } from "@/actions/orders";
+import { getOrderById, updateOrderStatus, verifyAndDeliverOrder } from "@/actions/orders";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { OrderTimeline } from "@/components/orders/order-timeline";
 import Link from "next/link";
 import { format } from "date-fns";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 
 export default function OrderDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const [order, setOrder] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isOtpOpen, setIsOtpOpen] = useState(false);
+  const [otpInput, setOtpInput] = useState("");
+  const [otpError, setOtpError] = useState("");
+  const [isVerifying, setIsVerifying] = useState(false);
 
   const fetchOrder = async () => {
     setIsLoading(true);
@@ -35,10 +40,34 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
   }, [resolvedParams.id]);
 
   const handleStatusChange = async (newStatus: string) => {
-    if (order) {
-      // Optimistic update
-      setOrder({ ...order, status: newStatus });
-      await updateOrderStatus(order.id, newStatus);
+    if (!order) return;
+    if (newStatus === "Delivered") {
+      setOtpInput("");
+      setOtpError("");
+      setIsOtpOpen(true);
+      return;
+    }
+
+    setOrder({ ...order, status: newStatus });
+    await updateOrderStatus(order.id, newStatus);
+  };
+
+  const handleVerifyOtp = async () => {
+    if (!otpInput || otpInput.length < 4) {
+      setOtpError("Please enter a valid 4-digit Delivery OTP.");
+      return;
+    }
+    setIsVerifying(true);
+    setOtpError("");
+
+    const res = await verifyAndDeliverOrder(order.id, otpInput.trim());
+    setIsVerifying(false);
+
+    if (res.success) {
+      setIsOtpOpen(false);
+      setOrder({ ...order, status: "Delivered", payment_status: "Paid" });
+    } else {
+      setOtpError(res.error || "Invalid OTP code. Ask customer for their unique 4-digit PIN.");
     }
   };
 
@@ -71,8 +100,15 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" className="gap-2 shadow-sm">
-              <Printer className="w-4 h-4" /> Print Invoice
+            <Button variant="outline" className="gap-2 shadow-sm" asChild>
+              <Link href={`/invoice/${order.id}`} target="_blank">
+                <Printer className="w-4 h-4" /> Print
+              </Link>
+            </Button>
+            <Button variant="outline" className="gap-2 shadow-sm" asChild>
+              <Link href={`/invoice/${order.id}`} target="_blank">
+                <Download className="w-4 h-4" /> Invoice
+              </Link>
             </Button>
             <Select value={order.status} onValueChange={handleStatusChange}>
               <SelectTrigger className="w-[180px] bg-primary text-primary-foreground border-none">
@@ -104,7 +140,7 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
                       <div className="flex items-center gap-4">
                         <div className="w-12 h-12 bg-muted rounded-md" />
                         <div>
-                          <p className="font-medium">{item.product?.name || "Unknown Product"}</p>
+                          <p className="font-medium">{item.product_name || item.product?.name || "Product"}</p>
                           <p className="text-sm text-muted-foreground">Qty: {item.quantity} x ₹{item.unit_price}</p>
                         </div>
                       </div>
@@ -186,11 +222,76 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
                   <span className="text-sm text-muted-foreground">Method</span>
                   <span className="font-medium">{order.payment_method}</span>
                 </div>
+                {order.payment_transactions && order.payment_transactions.length > 0 && (
+                  <>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-muted-foreground">Gateway</span>
+                      <span className="font-medium">{order.payment_transactions[0].payment_provider || "Razorpay"}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-muted-foreground">Transaction ID</span>
+                      <span className="font-medium">{order.payment_transactions[0].gateway_transaction_id}</span>
+                    </div>
+                  </>
+                )}
+                {order.payment_status === "Paid" && (
+                  <div className="pt-4 border-t mt-4">
+                    <Button variant="destructive" className="w-full" onClick={() => {
+                      if (confirm('Initiate refund?')) {
+                         // call refund endpoint
+                         alert('Refund initiated');
+                      }
+                    }}>
+                      Initiate Refund
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
         </div>
       </div>
+
+      {/* OTP Verification Modal */}
+      <Dialog open={isOtpOpen} onOpenChange={setIsOtpOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-primary">
+              <ShieldCheck className="w-5 h-5 text-primary" /> Verify Delivery OTP
+            </DialogTitle>
+            <DialogDescription>
+              Ask the customer for their unique 4-digit Delivery OTP to mark Order #{order.id.substring(0, 8).toUpperCase()} as Delivered.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase text-muted-foreground">Delivery OTP Code</label>
+              <input
+                type="text"
+                maxLength={6}
+                value={otpInput}
+                onChange={(e) => setOtpInput(e.target.value)}
+                placeholder="e.g. 5824"
+                className="w-full text-center text-2xl font-bold tracking-widest px-4 py-3 rounded-lg border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                autoFocus
+              />
+            </div>
+            {otpError && (
+              <p className="text-sm font-medium text-destructive">{otpError}</p>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setIsOtpOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleVerifyOtp} disabled={isVerifying}>
+              {isVerifying ? "Verifying..." : "Confirm & Deliver"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageTransition>
   );
 }

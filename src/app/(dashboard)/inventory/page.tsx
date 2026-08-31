@@ -4,16 +4,38 @@ import { PageTransition } from "@/components/layout/page-transition";
 import { DataTable } from "@/components/shared/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { AlertTriangle, Plus, Minus, History } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AlertTriangle, History, Package } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { getProducts } from "@/actions/products";
+import Link from "next/link";
 
 export default function InventoryPage() {
-  const inventoryData = [
-    { id: "1", name: "Fresh Tomatoes", sku: "VEG-001", stock: 12, min_stock: 20, status: "Low Stock" },
-    { id: "2", name: "Aashirvaad Atta", sku: "GRO-042", stock: 154, min_stock: 50, status: "In Stock" },
-    { id: "3", name: "Amul Butter", sku: "DAI-012", stock: 0, min_stock: 15, status: "Out of Stock" },
-  ];
+  const { data: products = [], isLoading } = useQuery({
+    queryKey: ["products"],
+    queryFn: getProducts,
+  });
+
+  const inventoryData = products.map((product: any) => {
+    const stock = Number(product.stock ?? 0);
+    const minStock = Number(product.minimum_stock ?? 10);
+    let status = "In Stock";
+    if (stock === 0) status = "Out of Stock";
+    else if (stock <= minStock) status = "Low Stock";
+
+    return {
+      id: product.id,
+      name: product.name,
+      sku: product.sku || `SKU-${product.id.slice(0, 5)}`,
+      stock,
+      minStock,
+      status,
+    };
+  });
+
+  const outOfStockCount = inventoryData.filter((i: any) => i.stock === 0).length;
+  const lowStockCount = inventoryData.filter((i: any) => i.stock > 0 && i.stock <= i.minStock).length;
+  const totalCount = inventoryData.length;
 
   const columns = [
     {
@@ -51,12 +73,12 @@ export default function InventoryPage() {
     },
     {
       id: "actions",
-      header: () => <div className="text-right">Quick Adjust</div>,
+      header: () => <div className="text-right">Action</div>,
       cell: ({ row }: any) => (
         <div className="flex items-center justify-end gap-2">
-          <Input type="number" defaultValue="0" className="w-20 h-8" />
-          <Button size="icon" variant="outline" className="h-8 w-8 text-success hover:text-success hover:bg-success/10"><Plus className="w-4 h-4" /></Button>
-          <Button size="icon" variant="outline" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"><Minus className="w-4 h-4" /></Button>
+          <Button size="sm" variant="outline" asChild>
+            <Link href={`/products/${row.original.id}`}>Manage</Link>
+          </Button>
         </div>
       )
     }
@@ -68,7 +90,7 @@ export default function InventoryPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-heading font-bold tracking-tight">Inventory Management</h1>
-            <p className="text-muted-foreground mt-2">Monitor stock levels and process adjustments.</p>
+            <p className="text-muted-foreground mt-2">Monitor live stock levels and process adjustments.</p>
           </div>
           <Button variant="outline" className="gap-2">
             <History className="w-4 h-4" />
@@ -84,7 +106,7 @@ export default function InventoryPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-destructive">24</div>
+              <div className="text-3xl font-bold text-destructive">{outOfStockCount}</div>
             </CardContent>
           </Card>
           <Card className="bg-warning/10 border-warning/20 shadow-none">
@@ -94,22 +116,28 @@ export default function InventoryPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-warning">86</div>
+              <div className="text-3xl font-bold text-warning">{lowStockCount}</div>
             </CardContent>
           </Card>
           <Card className="bg-success/10 border-success/20 shadow-none">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-success flex items-center gap-2">
-                Total Products
+                <Package className="w-4 h-4" /> Total Products
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-success">1,248</div>
+              <div className="text-3xl font-bold text-success">{totalCount}</div>
             </CardContent>
           </Card>
         </div>
 
-        <DataTable columns={columns} data={inventoryData} searchKey="name" />
+        {isLoading ? (
+          <div className="h-64 flex items-center justify-center border rounded-xl bg-card">
+            <p className="text-muted-foreground animate-pulse">Loading inventory...</p>
+          </div>
+        ) : (
+          <DataTable columns={columns} data={inventoryData} searchKey="name" />
+        )}
       </div>
     </PageTransition>
   );

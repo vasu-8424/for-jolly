@@ -1,11 +1,12 @@
 "use client";
 
-import { useTransition } from "react";
+import { useTransition, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { categorySchema, type CategoryFormValues } from "@/lib/schemas";
 import { createCategory, updateCategory } from "@/actions/categories";
 import { Button } from "@/components/ui/button";
+import toast from "react-hot-toast";
 import {
   Form,
   FormControl,
@@ -41,6 +42,16 @@ export function CategoryForm({ initialData, onSuccess }: CategoryFormProps) {
     },
   });
 
+  const categoryName = form.watch("name");
+
+  // Auto-generate slug when name changes for new categories
+  useEffect(() => {
+    if (!initialData && categoryName) {
+      const generatedSlug = categoryName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)+/g, "");
+      form.setValue("slug", generatedSlug, { shouldValidate: false });
+    }
+  }, [categoryName, initialData, form]);
+
   const onSubmit = (values: CategoryFormValues) => {
     startTransition(async () => {
       let result;
@@ -51,12 +62,11 @@ export function CategoryForm({ initialData, onSuccess }: CategoryFormProps) {
       }
 
       if (result.success) {
+        toast.success(initialData?.id ? "Category updated successfully!" : "Category created successfully!");
         form.reset();
         onSuccess?.();
       } else {
-        console.error(result.error);
-        // We'd use a toast here in reality
-        alert("Error saving category: " + result.error);
+        toast.error(result.error || "Failed to save category");
       }
     });
   };
@@ -119,7 +129,11 @@ export function CategoryForm({ initialData, onSuccess }: CategoryFormProps) {
               <FormItem>
                 <FormLabel>Sort Order</FormLabel>
                 <FormControl>
-                  <Input type="number" {...field} />
+                  <Input 
+                    type="number" 
+                    {...field} 
+                    onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>

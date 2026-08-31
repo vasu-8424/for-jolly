@@ -28,7 +28,7 @@ export function RevenueChart() {
               <Tooltip 
                 contentStyle={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))", borderRadius: "8px" }}
                 itemStyle={{ color: "hsl(var(--foreground))" }}
-                formatter={(value: number) => [`₹${value.toLocaleString()}`, "Revenue"]}
+                formatter={(value: any) => [`₹${Number(value || 0).toLocaleString()}`, "Revenue"]}
               />
               <Area 
                 type="monotone" 

@@ -1,16 +1,15 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 
 export async function getCustomers() {
-  const supabase = await createClient();
-  // Profiles is the main table representing customers based on Supabase Auth.
+  const supabase = await createAdminClient();
+  // Fetch from users table which has wallet_balance and reward_points
   const { data, error } = await supabase
-    .from("profiles")
+    .from("users")
     .select(`
-      *,
-      wallets (balance, reward_points)
+      *
     `)
     .order("created_at", { ascending: false });
 
@@ -18,18 +17,25 @@ export async function getCustomers() {
     console.error("Error fetching customers:", error);
     return [];
   }
-  return data;
+
+  // Map to format expected by UI
+  return data.map((user: any) => ({
+    ...user,
+    wallets: [{
+      balance: user.wallet_balance || 0,
+      reward_points: user.reward_points || 0
+    }]
+  }));
 }
 
 export async function getCustomerById(id: string) {
-  const supabase = await createClient();
+  const supabase = await createAdminClient();
   const { data, error } = await supabase
-    .from("profiles")
+    .from("users")
     .select(`
       *,
-      wallets (*),
       addresses (*),
-      orders (id, total_amount, status, created_at)
+      orders (id, grand_total, status, created_at)
     `)
     .eq("id", id)
     .single();
@@ -38,31 +44,44 @@ export async function getCustomerById(id: string) {
     console.error("Error fetching customer details:", error);
     return null;
   }
-  return data;
+
+  // Map wallets to balance and reward points from users table and format orders
+  return {
+    ...data,
+    orders: (data.orders || []).map((ord: any) => ({
+      ...ord,
+      total_amount: Number(ord.grand_total || 0),
+    })),
+    wallets: [{
+      balance: data.wallet_balance || 0,
+      reward_points: data.reward_points || 0
+    }]
+  };
 }
 
-// Admin action to instantly add credit to customer wallet
 export async function addWalletCredit(customerId: string, amount: number, reason: string) {
-  const supabase = await createClient();
+  const supabase = await createAdminClient();
   
-  // Real implementation would use an RPC call or trigger to ensure atomic increments
-  // For now, we'll fetch current, update, and insert transaction.
-  const { data: wallet } = await supabase.from("wallets").select("*").eq("user_id", customerId).single();
+  const { data: user, error: fetchError } = await supabase
+    .from("users")
+    .select("wallet_balance")
+    .eq("id", customerId)
+    .single();
   
-  if (!wallet) return { success: false, error: "Wallet not found" };
+  if (fetchError || !user) return { success: false, error: "Customer not found" };
 
-  const newBalance = Number(wallet.balance) + amount;
+  const newBalance = Number(user.wallet_balance) + amount;
 
   const { error: updateError } = await supabase
-    .from("wallets")
-    .update({ balance: newBalance })
-    .eq("id", wallet.id);
+    .from("users")
+    .update({ wallet_balance: newBalance })
+    .eq("id", customerId);
 
   if (updateError) return { success: false, error: updateError.message };
 
   await supabase.from("wallet_transactions").insert([{
-    wallet_id: wallet.id,
-    type: 'credit',
+    user_id: customerId,
+    transaction_type: 'Credit',
     amount: amount,
     description: reason
   }]);
@@ -72,9 +91,9 @@ export async function addWalletCredit(customerId: string, amount: number, reason
 }
 
 export async function updateCustomer(id: string, updates: any) {
-  const supabase = await createClient();
+  const supabase = await createAdminClient();
   const { error } = await supabase
-    .from("profiles")
+    .from("users")
     .update(updates)
     .eq("id", id);
 

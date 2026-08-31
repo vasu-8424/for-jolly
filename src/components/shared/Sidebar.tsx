@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { logout } from "@/app/(auth)/login/actions";
 
 const menuGroups = [
   {
@@ -40,6 +41,7 @@ const menuGroups = [
     title: "Sales & Users",
     items: [
       { name: "Orders", href: "/orders", icon: ShoppingCart },
+      { name: "Invoices", href: "/invoice", icon: FileText },
       { name: "Customers", href: "/customers", icon: Users },
     ]
   },
@@ -68,8 +70,9 @@ export function Sidebar() {
 
   return (
     <aside className="w-64 border-r border-border bg-card flex-shrink-0 hidden md:flex flex-col">
-      <div className="h-16 flex items-center px-6 border-b border-border">
-        <h1 className="text-xl font-heading font-bold text-primary">Kakinada Fresh</h1>
+      <div className="h-16 flex items-center gap-3 px-6 border-b border-border">
+        <img src="/logo.png" alt="Kakinada Fresh Logo" className="w-9 h-9 rounded-lg object-cover border border-emerald-500/20 shadow-sm" />
+        <h1 className="text-lg font-heading font-bold text-primary tracking-tight">Kakinada Fresh</h1>
       </div>
       <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-6">
         {menuGroups.map((group, i) => (
@@ -81,7 +84,7 @@ export function Sidebar() {
               const isActive = pathname.startsWith(item.href) && (item.href !== "/dashboard" || pathname === "/dashboard");
               const Icon = item.icon;
               return (
-                <Link key={item.name} href={item.href} prefetch={false} className="block">
+                <Link key={item.name} href={item.href} className="block">
                   <span
                     className={cn(
                       "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200",
@@ -106,7 +109,10 @@ export function Sidebar() {
             Profile
           </span>
         </Link>
-        <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors">
+        <button 
+          onClick={() => logout()}
+          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+        >
           <LogOut className="w-4 h-4" />
           Logout
         </button>

@@ -1,10 +1,10 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 
 export async function getHomepageSections() {
-  const supabase = await createClient();
+  const supabase = await createAdminClient();
   const { data, error } = await supabase
     .from("homepage_sections")
     .select(`
@@ -21,7 +21,7 @@ export async function getHomepageSections() {
 }
 
 export async function updateHomepageSection(id: string, updates: any) {
-  const supabase = await createClient();
+  const supabase = await createAdminClient();
   const { error } = await supabase
     .from("homepage_sections")
     .update(updates)
@@ -36,7 +36,7 @@ export async function updateHomepageSection(id: string, updates: any) {
 }
 
 export async function createHomepageSection(values: any) {
-  const supabase = await createClient();
+  const supabase = await createAdminClient();
   const { error } = await supabase
     .from("homepage_sections")
     .insert([values]);

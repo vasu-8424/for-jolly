@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/sheet";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
+import toast from "react-hot-toast";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type CategoryData = any;
@@ -34,9 +35,19 @@ export default function CategoriesPage() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: deleteCategory,
-    onSuccess: () => {
+    mutationFn: async (id: string) => {
+      const res = await deleteCategory(id);
+      if (!res.success) {
+        throw new Error(res.error || "Failed to delete category");
+      }
+      return res;
+    },
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["categories"] });
+      toast.success(data?.message || "Category deleted successfully");
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Failed to delete category");
     },
   });
 

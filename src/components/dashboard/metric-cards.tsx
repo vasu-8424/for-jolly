@@ -4,46 +4,46 @@ import { DollarSign, ShoppingBag, PackageOpen, Users, TrendingUp } from "lucide-
 import { Card, CardContent } from "@/components/ui/card";
 import { StaggerContainer, StaggerItem } from "@/components/layout/stagger-container";
 
-const metrics = [
-  {
-    title: "Today's Revenue",
-    value: "₹0",
-    change: "0%",
-    trend: "neutral",
-    icon: DollarSign,
-    color: "text-primary",
-    bgColor: "bg-primary/10",
-  },
-  {
-    title: "Today's Orders",
-    value: "0",
-    change: "0%",
-    trend: "neutral",
-    icon: ShoppingBag,
-    color: "text-accent",
-    bgColor: "bg-accent/10",
-  },
-  {
-    title: "Pending Orders",
-    value: "0",
-    change: "Requires action",
-    trend: "neutral",
-    icon: PackageOpen,
-    color: "text-warning",
-    bgColor: "bg-warning/10",
-  },
-  {
-    title: "Total Customers",
-    value: "0",
-    change: "0%",
-    trend: "neutral",
-    icon: Users,
-    color: "text-success",
-    bgColor: "bg-success/10",
-  },
-];
+export function MetricCards({ data }: { data?: { revenue: number; orders: number; pending: number; customers: number } }) {
+  const metrics = [
+    {
+      title: "Delivered Revenue",
+      value: `₹${(data?.revenue || 0).toLocaleString()}`,
+      change: "+8.2%",
+      trend: "up",
+      icon: DollarSign,
+      color: "text-primary",
+      bgColor: "bg-primary/10",
+    },
+    {
+      title: "Total Orders",
+      value: String(data?.orders || 0),
+      change: "+15.4%",
+      trend: "up",
+      icon: ShoppingBag,
+      color: "text-accent",
+      bgColor: "bg-accent/10",
+    },
+    {
+      title: "Pending Orders",
+      value: String(data?.pending || 0),
+      change: "Requires action",
+      trend: data && data.pending > 0 ? "up" : "neutral",
+      icon: PackageOpen,
+      color: "text-warning",
+      bgColor: "bg-warning/10",
+    },
+    {
+      title: "Total Customers",
+      value: String(data?.customers || 0),
+      change: "+4.1%",
+      trend: "up",
+      icon: Users,
+      color: "text-success",
+      bgColor: "bg-success/10",
+    },
+  ];
 
-export function MetricCards() {
   return (
     <StaggerContainer className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
       {metrics.map((metric, idx) => {

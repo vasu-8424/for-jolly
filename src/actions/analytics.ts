@@ -1,13 +1,13 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function getDashboardMetrics() {
-  const supabase = await createClient();
+  const supabase = await createAdminClient();
   
   // Get active customers count
   const { count: customersCount } = await supabase
-    .from("profiles")
+    .from("users")
     .select("*", { count: "exact", head: true });
 
   // Get total orders count
@@ -18,10 +18,10 @@ export async function getDashboardMetrics() {
   // Get total revenue (sum of all delivered orders)
   const { data: deliveredOrders } = await supabase
     .from("orders")
-    .select("total_amount")
+    .select("grand_total")
     .eq("status", "Delivered");
 
-  const totalRevenue = deliveredOrders?.reduce((acc, order) => acc + Number(order.total_amount), 0) || 0;
+  const totalRevenue = deliveredOrders?.reduce((acc, order) => acc + Number(order.grand_total || 0), 0) || 0;
 
   // Pending orders
   const { count: pendingCount } = await supabase
