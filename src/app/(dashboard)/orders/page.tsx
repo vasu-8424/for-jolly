@@ -58,11 +58,20 @@ export default function OrdersPage() {
     },
     {
       accessorKey: "profiles.full_name",
-      header: "Customer",
+      header: "Customer & Destination",
       cell: ({ row }) => (
-        <div className="flex flex-col">
-          <span className="font-medium text-primary">{row.original.profiles?.full_name || "Guest"}</span>
-          <span className="text-xs text-muted-foreground">{row.original.profiles?.phone_number}</span>
+        <div className="flex flex-col max-w-xs">
+          <span className="font-medium text-primary">
+            {row.original.delivery_address_details?.recipient_name || row.original.profiles?.full_name || "Guest"}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {row.original.delivery_address_details?.recipient_phone || row.original.profiles?.phone_number}
+          </span>
+          {row.original.delivery_address && row.original.delivery_address !== "No address provided" && (
+            <span className="text-[11px] text-muted-foreground/80 truncate mt-0.5" title={row.original.delivery_address}>
+              📍 {row.original.delivery_address}
+            </span>
+          )}
         </div>
       )
     },

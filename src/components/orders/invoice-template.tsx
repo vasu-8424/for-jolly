@@ -28,10 +28,16 @@ export function InvoiceTemplate({ order }: { order: any }) {
 
       {/* Bill To */}
       <div className="mb-8">
-        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Billed To:</h3>
-        <p className="text-lg font-bold text-gray-800">{order.profiles?.full_name || "Guest"}</p>
-        <p className="text-gray-600 w-1/2 mt-1">{order.delivery_address || "No Address Provided"}</p>
-        <p className="text-gray-600 mt-1">Phone: {order.profiles?.phone_number}</p>
+        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Billed & Shipped To:</h3>
+        <p className="text-lg font-bold text-gray-800">
+          {order.delivery_address_details?.recipient_name || order.profiles?.full_name || "Guest"}
+        </p>
+        <p className="text-gray-600 w-2/3 mt-1 leading-relaxed">
+          {order.delivery_address || "No Address Provided"}
+        </p>
+        <p className="text-gray-600 mt-1">
+          Phone: {order.delivery_address_details?.recipient_phone || order.profiles?.phone_number || "N/A"}
+        </p>
       </div>
 
       {/* Items Table */}

@@ -10,7 +10,8 @@ export async function getProducts() {
     .from("products")
     .select(`
       *,
-      categories (name)
+      categories (name),
+      product_images (image_url, is_thumbnail, display_order)
     `)
     .order("created_at", { ascending: false });
 

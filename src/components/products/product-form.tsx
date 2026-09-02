@@ -100,6 +100,35 @@ export function ProductForm({ initialData }: ProductFormProps) {
     name: "variants",
   });
 
+  const [selectedVariantIdx, setSelectedVariantIdx] = useState<number | "base">("base");
+
+  const mrp = form.watch("mrp");
+  const sellingPrice = form.watch("selling_price");
+
+  // Auto calculate discount percentage when MRP or Selling Price changes
+  useEffect(() => {
+    const numMrp = Number(mrp) || 0;
+    const numSp = Number(sellingPrice) || 0;
+    if (numMrp > numSp && numSp > 0) {
+      const discount = Math.round(((numMrp - numSp) / numMrp) * 100);
+      form.setValue("discount_percentage", discount, { shouldValidate: false });
+    } else {
+      form.setValue("discount_percentage", 0, { shouldValidate: false });
+    }
+  }, [mrp, sellingPrice, form]);
+
+  const currentValues = form.watch();
+
+  // Reset selectedVariantIdx if variant was removed
+  useEffect(() => {
+    if (
+      typeof selectedVariantIdx === "number" &&
+      (!currentValues.variants || selectedVariantIdx >= currentValues.variants.length)
+    ) {
+      setSelectedVariantIdx("base");
+    }
+  }, [currentValues.variants, selectedVariantIdx]);
+
   const onSubmit = (values: ProductFormValues) => {
     startTransition(async () => {
       let result;
@@ -118,12 +147,33 @@ export function ProductForm({ initialData }: ProductFormProps) {
     });
   };
 
-  const currentValues = form.watch();
-
   const onError = (errors: any) => {
     console.error("Form validation errors:", errors);
     toast.error("Please fill in all required fields correctly. Check the form for red error messages.");
   };
+
+  // Compute active preview details
+  const previewDisplay = (() => {
+    if (
+      selectedVariantIdx !== "base" &&
+      currentValues.variants &&
+      currentValues.variants[selectedVariantIdx]
+    ) {
+      const v = currentValues.variants[selectedVariantIdx];
+      const sp = Number(v.selling_price) > 0 ? Number(v.selling_price) : (Number(currentValues.selling_price) || 0);
+      const m = Number(v.mrp) > 0 ? Number(v.mrp) : (Number(currentValues.mrp) || 0);
+      const unitStr = `${v.weight ?? ""} ${v.unit ?? ""}`.trim() || `${currentValues.weight || "1"} ${currentValues.unit || "kg"}`;
+      const discount = m > sp && m > 0 ? Math.round(((m - sp) / m) * 100) : 0;
+      return { sp, mrp: m, unitStr, discount };
+    }
+
+    // Base Product values
+    const sp = Number(currentValues.selling_price) || 0;
+    const m = Number(currentValues.mrp) || 0;
+    const unitStr = `${currentValues.weight || "1"} ${currentValues.unit || "kg"}`.trim();
+    const discount = m > sp && m > 0 ? Math.round(((m - sp) / m) * 100) : 0;
+    return { sp, mrp: m, unitStr, discount };
+  })();
 
   return (
     <div className="flex gap-6 h-full max-w-7xl mx-auto">
@@ -283,6 +333,7 @@ export function ProductForm({ initialData }: ProductFormProps) {
             <Card className="border-border shadow-sm bg-card/80 backdrop-blur-xl">
               <CardHeader>
                 <CardTitle>Pricing Strategy</CardTitle>
+                <CardDescription>Set the main base price for this product ({currentValues.weight || "1"} {currentValues.unit || "kg"}).</CardDescription>
               </CardHeader>
               <CardContent className="grid grid-cols-2 gap-6">
                 <FormField
@@ -294,7 +345,9 @@ export function ProductForm({ initialData }: ProductFormProps) {
                       <FormControl>
                         <Input 
                           type="number" 
+                          placeholder="0"
                           {...field} 
+                          value={field.value !== undefined && field.value !== null ? field.value : ""}
                           onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
                         />
                       </FormControl>
@@ -311,7 +364,9 @@ export function ProductForm({ initialData }: ProductFormProps) {
                       <FormControl>
                         <Input 
                           type="number" 
+                          placeholder="0"
                           {...field} 
+                          value={field.value !== undefined && field.value !== null ? field.value : ""}
                           onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
                         />
                       </FormControl>
@@ -328,7 +383,22 @@ export function ProductForm({ initialData }: ProductFormProps) {
                   <CardTitle>Additional Size Variants</CardTitle>
                   <CardDescription>Add options like 500gms, 250gms with specific pricing.</CardDescription>
                 </div>
-                <Button type="button" variant="outline" size="sm" onClick={() => append({ weight: 0, unit: "gms", mrp: 0, selling_price: 0, stock: 0 })}>
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => {
+                    const baseMrp = Number(currentValues.mrp) || 0;
+                    const baseSp = Number(currentValues.selling_price) || 0;
+                    append({ 
+                      weight: 500, 
+                      unit: "gms", 
+                      mrp: baseMrp > 0 ? Math.round(baseMrp / 2) : 0, 
+                      selling_price: baseSp > 0 ? Math.round(baseSp / 2) : 0, 
+                      stock: Number(currentValues.stock) || 10 
+                    });
+                  }}
+                >
                   <Plus className="w-4 h-4 mr-2" />
                   Add Variant
                 </Button>
@@ -358,7 +428,9 @@ export function ProductForm({ initialData }: ProductFormProps) {
                             <FormControl>
                               <Input 
                                 type="number" 
+                                placeholder="500"
                                 {...field} 
+                                value={field.value !== undefined && field.value !== null ? field.value : ""}
                                 onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
                               />
                             </FormControl>
@@ -388,7 +460,9 @@ export function ProductForm({ initialData }: ProductFormProps) {
                             <FormControl>
                               <Input 
                                 type="number" 
+                                placeholder="0"
                                 {...field} 
+                                value={field.value !== undefined && field.value !== null ? field.value : ""}
                                 onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
                               />
                             </FormControl>
@@ -405,7 +479,9 @@ export function ProductForm({ initialData }: ProductFormProps) {
                             <FormControl>
                               <Input 
                                 type="number" 
+                                placeholder="0"
                                 {...field} 
+                                value={field.value !== undefined && field.value !== null ? field.value : ""}
                                 onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
                               />
                             </FormControl>
@@ -422,7 +498,9 @@ export function ProductForm({ initialData }: ProductFormProps) {
                             <FormControl>
                               <Input 
                                 type="number" 
+                                placeholder="0"
                                 {...field} 
+                                value={field.value !== undefined && field.value !== null ? field.value : ""}
                                 onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
                               />
                             </FormControl>
@@ -661,9 +739,9 @@ export function ProductForm({ initialData }: ProductFormProps) {
                   {lbl}
                 </div>
               ))}
-              {currentValues.discount_percentage > 0 && (
+              {previewDisplay.discount > 0 && (
                 <div className="bg-red-500 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-sm shadow-sm backdrop-blur-md inline-flex self-start">
-                  {currentValues.discount_percentage}% OFF
+                  {previewDisplay.discount}% OFF
                 </div>
               )}
             </div>
@@ -679,31 +757,51 @@ export function ProductForm({ initialData }: ProductFormProps) {
                 <h3 className="font-semibold text-base leading-tight text-foreground line-clamp-2">
                   {currentValues.name || "Product Title"}
                 </h3>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {currentValues.weight || "1"} {currentValues.unit || "kg"}
+                <p className="text-xs text-muted-foreground mt-1 font-medium">
+                  {previewDisplay.unitStr}
                 </p>
               </div>
             </div>
             
             <div className="flex items-center gap-2 mt-1">
-              <span className="font-bold text-lg text-foreground">
-                ₹{currentValues.variants && currentValues.variants.length > 0 ? currentValues.variants[0].selling_price : (currentValues.selling_price || "0")}
+              <span className="font-bold text-xl text-emerald-600 dark:text-emerald-400">
+                ₹{previewDisplay.sp}
               </span>
-              {(currentValues.variants && currentValues.variants.length > 0 ? currentValues.variants[0].mrp > currentValues.variants[0].selling_price : currentValues.mrp > currentValues.selling_price) && (
+              {previewDisplay.mrp > previewDisplay.sp && (
                 <span className="text-sm text-muted-foreground line-through">
-                  ₹{currentValues.variants && currentValues.variants.length > 0 ? currentValues.variants[0].mrp : currentValues.mrp}
+                  ₹{previewDisplay.mrp}
                 </span>
               )}
             </div>
 
             {currentValues.variants && currentValues.variants.length > 0 && (
               <div className="mt-3">
-                <p className="text-sm font-semibold mb-2">Available Sizes</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Available Sizes</p>
                 <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedVariantIdx("base")}
+                    className={`px-3 py-1.5 rounded-lg border text-xs cursor-pointer transition-all ${
+                      selectedVariantIdx === "base"
+                        ? "bg-primary/10 border-primary text-primary font-bold shadow-sm"
+                        : "bg-background text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {currentValues.weight || "1"}{currentValues.unit || "kg"} - ₹{currentValues.selling_price || 0}
+                  </button>
                   {currentValues.variants.map((v: any, i: number) => (
-                    <div key={i} className={`px-3 py-1.5 rounded-lg border text-sm ${i === 0 ? 'bg-primary/10 border-primary text-primary font-medium' : 'bg-background text-muted-foreground'}`}>
-                      {v.weight}{v.unit} - ₹{v.selling_price}
-                    </div>
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setSelectedVariantIdx(i)}
+                      className={`px-3 py-1.5 rounded-lg border text-xs cursor-pointer transition-all ${
+                        selectedVariantIdx === i
+                          ? "bg-primary/10 border-primary text-primary font-bold shadow-sm"
+                          : "bg-background text-muted-foreground hover:bg-muted"
+                      }`}
+                    >
+                      {v.weight || "0"}{v.unit || "gms"} - ₹{v.selling_price || 0}
+                    </button>
                   ))}
                 </div>
               </div>

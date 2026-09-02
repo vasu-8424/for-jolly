@@ -50,12 +50,25 @@ export default function ProductsPage() {
     {
       accessorKey: "name",
       header: "Product Details",
-      cell: ({ row }) => (
-        <div className="flex flex-col">
-          <span className="font-medium text-primary">{row.getValue("name")}</span>
-          <span className="text-xs text-muted-foreground">SKU: {row.original.sku}</span>
-        </div>
-      ),
+      cell: ({ row }) => {
+        const images = row.original.product_images || [];
+        const thumb = images.find((i: any) => i.is_thumbnail)?.image_url || images[0]?.image_url;
+        return (
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-muted border overflow-hidden flex-shrink-0 flex items-center justify-center">
+              {thumb ? (
+                <img src={thumb} alt={row.getValue("name")} className="w-full h-full object-cover" />
+              ) : (
+                <PackageOpen className="w-5 h-5 text-muted-foreground/50" />
+              )}
+            </div>
+            <div className="flex flex-col">
+              <span className="font-medium text-primary">{row.getValue("name")}</span>
+              <span className="text-xs text-muted-foreground">SKU: {row.original.sku || "N/A"}</span>
+            </div>
+          </div>
+        );
+      },
     },
     {
       accessorKey: "categories.name",

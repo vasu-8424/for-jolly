@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
-import { ArrowLeft, Printer, Download, MapPin, Phone, Mail, User, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Printer, Download, MapPin, Phone, Mail, User, ShieldCheck, Navigation, KeyRound, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/layout/page-transition";
 import { getOrderById, updateOrderStatus, verifyAndDeliverOrder } from "@/actions/orders";
@@ -182,27 +182,95 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
           <div className="lg:col-span-1 space-y-6">
             <Card className="border-border shadow-sm bg-card/80 backdrop-blur-xl">
               <CardHeader>
-                <CardTitle>Customer Details</CardTitle>
+                <CardTitle>Customer & Delivery Details</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center gap-3">
-                  <User className="w-5 h-5 text-muted-foreground" />
-                  <span className="font-medium">{order.profiles?.full_name || "Guest"}</span>
+                  <User className="w-5 h-5 text-muted-foreground shrink-0" />
+                  <div>
+                    <span className="font-semibold text-foreground">
+                      {order.delivery_address_details?.recipient_name || order.profiles?.full_name || "Customer"}
+                    </span>
+                    {order.delivery_address_details?.recipient_name && order.delivery_address_details.recipient_name !== order.profiles?.full_name && (
+                      <span className="text-xs text-muted-foreground block">Account: {order.profiles?.full_name}</span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Phone className="w-5 h-5 text-muted-foreground" />
-                  <span className="text-sm">{order.profiles?.phone_number || "No Phone"}</span>
+                  <Phone className="w-5 h-5 text-muted-foreground shrink-0" />
+                  <a 
+                    href={`tel:${order.delivery_address_details?.recipient_phone || order.profiles?.phone_number}`}
+                    className="text-sm font-medium text-primary hover:underline"
+                  >
+                    {order.delivery_address_details?.recipient_phone || order.profiles?.phone_number || "No Phone"}
+                  </a>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Mail className="w-5 h-5 text-muted-foreground" />
-                  <span className="text-sm">{order.profiles?.email || "No Email"}</span>
+                  <Mail className="w-5 h-5 text-muted-foreground shrink-0" />
+                  <span className="text-sm text-muted-foreground">{order.profiles?.email || "No Email"}</span>
                 </div>
                 
-                <div className="pt-4 border-t mt-4">
-                  <div className="flex items-start gap-3">
-                    <MapPin className="w-5 h-5 text-muted-foreground mt-0.5" />
-                    <p className="text-sm leading-relaxed">{order.delivery_address || "No address provided."}</p>
+                <div className="pt-4 border-t mt-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Delivery Address
+                    </span>
+                    <Badge variant="secondary" className="text-[10px]">
+                      {order.delivery_address_details?.type || "Delivery Address"}
+                    </Badge>
                   </div>
+
+                  <div className="flex items-start gap-3 bg-muted/30 p-3 rounded-xl border">
+                    <MapPin className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                    <div className="space-y-1 flex-1">
+                      <p className="text-sm font-medium leading-relaxed text-foreground">
+                        {order.delivery_address || "No address provided."}
+                      </p>
+                      {order.delivery_address_details?.landmark && (
+                        <p className="text-xs text-muted-foreground">
+                          Landmark: {order.delivery_address_details.landmark}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {order.delivery_address_details?.google_maps_url && (
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      asChild 
+                      className="w-full gap-2 border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400"
+                    >
+                      <a 
+                        href={order.delivery_address_details.google_maps_url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                      >
+                        <Navigation className="w-4 h-4" /> Open in Google Maps
+                      </a>
+                    </Button>
+                  )}
+
+                  {order.delivery_notes && (
+                    <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-xs">
+                      <MessageSquare className="w-4 h-4 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-semibold block mb-0.5">Delivery Notes:</span>
+                        {order.delivery_notes}
+                      </div>
+                    </div>
+                  )}
+
+                  {order.delivery_otp && (
+                    <div className="flex items-center justify-between p-2.5 rounded-lg bg-primary/10 border border-primary/20 text-xs">
+                      <span className="font-medium text-muted-foreground flex items-center gap-1.5">
+                        <KeyRound className="w-3.5 h-3.5 text-primary" /> Delivery OTP:
+                      </span>
+                      <span className="font-mono font-bold text-sm text-primary">
+                        {order.delivery_otp}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>

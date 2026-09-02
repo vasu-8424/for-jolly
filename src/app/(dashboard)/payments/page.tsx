@@ -1,118 +1,127 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { getPayments, initiateRefundAction } from "@/actions/payments";
+import { PageTransition } from "@/components/layout/page-transition";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { CreditCard, RefreshCw } from "lucide-react";
+import toast from "react-hot-toast";
 
 export default function PaymentsPage() {
   const [payments, setPayments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
+
+  const loadPayments = async () => {
+    setLoading(true);
+    const data = await getPayments();
+    setPayments(data);
+    setLoading(false);
+  };
 
   useEffect(() => {
-    async function fetchPayments() {
-      const { data, error } = await supabase
-        .from("payments")
-        .select(`
-          *,
-          orders ( order_number ),
-          users ( full_name, phone )
-        `)
-        .order("created_at", { ascending: false });
-
-      if (data) {
-        setPayments(data);
-      }
-      setLoading(false);
-    }
-
-    fetchPayments();
-
-    const subscription = supabase
-      .channel('public:payments')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, fetchPayments)
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(subscription);
-    };
+    loadPayments();
   }, []);
 
-  const handleRefund = async (paymentId: string) => {
-    // Basic refund stub for admin UI
-    if (confirm('Are you sure you want to initiate a refund for this payment?')) {
-      await supabase.from('refunds').insert({
-        payment_id: paymentId,
-        refund_amount: 0, // Should be computed based on payment amount
-        reason: 'Admin requested',
-      });
-      alert('Refund initiated!');
+  const handleRefund = async (paymentId: string, amount: number) => {
+    if (confirm("Are you sure you want to initiate a refund for this payment?")) {
+      const res = await initiateRefundAction(paymentId, amount, "Admin requested");
+      if (res.success) {
+        toast.success("Refund initiated successfully!");
+        loadPayments();
+      } else {
+        toast.error(res.error || "Failed to initiate refund");
+      }
     }
   };
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-6 text-gray-800">Payments & Refunds</h1>
-      
-      {loading ? (
-        <div className="text-gray-500">Loading payments...</div>
-      ) : (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order ID</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Method</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Gateway ID</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {payments.map((payment) => (
-                <tr key={payment.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {payment.orders?.order_number || 'N/A'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {payment.users?.full_name} <br/>
-                    <span className="text-xs text-gray-400">{payment.users?.phone}</span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
-                    ₹{payment.amount}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {payment.payment_method || 'Online'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                      ${payment.status === 'Paid' ? 'bg-green-100 text-green-800' : 
-                        payment.status === 'Failed' ? 'bg-red-100 text-red-800' : 
-                        payment.status === 'Refunded' ? 'bg-purple-100 text-purple-800' :
-                        'bg-yellow-100 text-yellow-800'}`}>
-                      {payment.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {payment.transaction_id || '-'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    {payment.status === 'Paid' && (
-                      <button 
-                        onClick={() => handleRefund(payment.id)}
-                        className="text-indigo-600 hover:text-indigo-900 font-semibold"
-                      >
-                        Refund
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <PageTransition>
+      <div className="space-y-6 pb-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-heading font-bold tracking-tight">Payments & Transactions</h1>
+            <p className="text-muted-foreground mt-2">View real-time customer payments and handle refunds.</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={loadPayments} className="gap-2">
+            <RefreshCw className="w-4 h-4" /> Refresh
+          </Button>
         </div>
-      )}
-    </div>
+
+        {loading ? (
+          <div className="h-64 flex items-center justify-center border rounded-xl bg-card">
+            <p className="text-muted-foreground animate-pulse">Loading transaction records...</p>
+          </div>
+        ) : payments.length === 0 ? (
+          <div className="h-64 border-2 border-dashed rounded-xl flex flex-col items-center justify-center bg-card/50">
+            <CreditCard className="w-12 h-12 text-muted-foreground/30 mb-4" />
+            <h3 className="text-xl font-bold">No Transactions Found</h3>
+            <p className="text-muted-foreground mt-2 max-w-md text-center text-sm">Customer payments will appear here in real-time as orders are placed.</p>
+          </div>
+        ) : (
+          <div className="bg-card border rounded-xl overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-border">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="px-6 py-3.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Order ID</th>
+                    <th className="px-6 py-3.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Customer</th>
+                    <th className="px-6 py-3.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Amount</th>
+                    <th className="px-6 py-3.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Method</th>
+                    <th className="px-6 py-3.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
+                    <th className="px-6 py-3.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Transaction ID</th>
+                    <th className="px-6 py-3.5 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border bg-card">
+                  {payments.map((payment) => (
+                    <tr key={payment.id} className="hover:bg-muted/30 transition-colors">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
+                        {payment.orders?.order_number || `#${payment.order_id?.slice(0, 8)}`}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
+                        <span className="font-medium text-foreground">{payment.users?.full_name || "Customer"}</span>
+                        {payment.users?.phone && (
+                          <span className="block text-xs text-muted-foreground">{payment.users.phone}</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-foreground">
+                        ₹{payment.amount}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
+                        {payment.payment_method || payment.payment_provider || "Online"}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <Badge variant={
+                          payment.status === "Paid" ? "default" :
+                          payment.status === "Failed" ? "destructive" :
+                          payment.status === "Refunded" ? "secondary" : "outline"
+                        }>
+                          {payment.status}
+                        </Badge>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-xs font-mono text-muted-foreground">
+                        {payment.transaction_id || payment.gateway_order_id || "-"}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        {payment.status === "Paid" && (
+                          <Button 
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleRefund(payment.id, payment.amount)}
+                          >
+                            Refund
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    </PageTransition>
   );
 }
