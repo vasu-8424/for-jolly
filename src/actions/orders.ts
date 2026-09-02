@@ -3,6 +3,15 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 
+function isDummyPhone(phone?: string | null): boolean {
+  if (!phone) return true;
+  const digits = phone.toString().replace(/\D/g, "");
+  if (digits.length < 10) return true;
+  // Detect placeholder phones like 9999999999, 0000000000, 1111111111, 1234567890
+  if (/^(.)\1{7,}$/.test(digits) || digits === "1234567890") return true;
+  return false;
+}
+
 function formatOrderAddressData(order: any, fallbackAddress?: any) {
   const addr = order.addresses || fallbackAddress || null;
 
@@ -13,9 +22,25 @@ function formatOrderAddressData(order: any, fallbackAddress?: any) {
   const city = addr?.city || "";
   const state = addr?.state || "";
   const pincode = addr?.pincode || addr?.postal_code || "";
-  const addressType = addr?.address_type || addr?.type || "Delivery Address";
-  const recipientName = addr?.name || order.profiles?.full_name || "Customer";
-  const recipientPhone = addr?.phone || order.profiles?.phone_number || "";
+
+  // Address Type Tag (e.g. Home, Work, Other)
+  const isLabel = ["home", "work", "office", "other", "default", "my address"].includes((addr?.name || "").toLowerCase().trim());
+  const addressType = addr?.address_type || addr?.type || (isLabel ? addr.name : "Home");
+
+  // User Profile
+  const profileName = order.profiles?.full_name || order.profiles?.name || "";
+  const profilePhone = order.profiles?.phone_number || order.profiles?.phone || "";
+
+  // Recipient Name: Use profile name if address name is just a tag/label like "Home"
+  const recipientName = (!isLabel && addr?.name?.trim()) ? addr.name.trim() : (profileName || "Customer");
+
+  // Recipient Phone: prioritize valid verified profile phone over dummy/placeholder phones like 9999999999
+  let recipientPhone = profilePhone;
+  if (addr?.phone && !isDummyPhone(addr.phone)) {
+    recipientPhone = addr.phone;
+  } else if (isDummyPhone(recipientPhone) && addr?.phone) {
+    recipientPhone = addr.phone;
+  }
 
   // GPS / Coordinates & location string
   const latitude = addr?.latitude ?? addr?.lat ?? order.latitude ?? order.delivery_lat ?? order.lat ?? null;

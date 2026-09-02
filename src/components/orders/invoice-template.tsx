@@ -11,7 +11,7 @@ export function InvoiceTemplate({ order }: { order: any }) {
           <h1 className="text-4xl font-black text-green-700 tracking-tight">KAKINADA FRESH</h1>
           <p className="text-sm text-gray-500 mt-1">GSTIN: 37ABCDE1234F1Z5</p>
           <p className="text-sm text-gray-500 mt-1">Main Road, Kakinada, AP - 533001</p>
-          <p className="text-sm text-gray-500">support@kakinadafresh.com | +91 9000000000</p>
+          <p className="text-sm text-gray-500">kakinadafresh@gmail.com | +91 79899 48996</p>
         </div>
         <div className="text-right">
           <h2 className="text-2xl font-bold text-gray-800 uppercase tracking-widest">Tax Invoice</h2>

@@ -59,21 +59,31 @@ export default function OrdersPage() {
     {
       accessorKey: "profiles.full_name",
       header: "Customer & Destination",
-      cell: ({ row }) => (
-        <div className="flex flex-col max-w-xs">
-          <span className="font-medium text-primary">
-            {row.original.delivery_address_details?.recipient_name || row.original.profiles?.full_name || "Guest"}
-          </span>
-          <span className="text-xs text-muted-foreground">
-            {row.original.delivery_address_details?.recipient_phone || row.original.profiles?.phone_number}
-          </span>
-          {row.original.delivery_address && row.original.delivery_address !== "No address provided" && (
-            <span className="text-[11px] text-muted-foreground/80 truncate mt-0.5" title={row.original.delivery_address}>
-              📍 {row.original.delivery_address}
-            </span>
-          )}
-        </div>
-      )
+      cell: ({ row }) => {
+        const order = row.original;
+        const name = order.delivery_address_details?.recipient_name || order.profiles?.full_name || "Guest";
+        const phone = order.delivery_address_details?.recipient_phone || order.profiles?.phone_number || "No Phone";
+        const tag = order.delivery_address_details?.type;
+
+        return (
+          <div className="flex flex-col max-w-xs space-y-0.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="font-semibold text-primary text-sm">{name}</span>
+              {tag && (
+                <Badge variant="secondary" className="text-[9px] px-1.5 py-0 h-4 font-normal">
+                  {tag}
+                </Badge>
+              )}
+            </div>
+            <span className="text-xs font-mono text-muted-foreground">{phone}</span>
+            {order.delivery_address && order.delivery_address !== "No address provided" && (
+              <span className="text-[11px] text-muted-foreground/80 truncate" title={order.delivery_address}>
+                📍 {order.delivery_address}
+              </span>
+            )}
+          </div>
+        );
+      }
     },
     {
       accessorKey: "total_amount",

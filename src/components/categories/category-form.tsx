@@ -31,12 +31,20 @@ export function CategoryForm({ initialData, onSuccess }: CategoryFormProps) {
 
   const form = useForm<CategoryFormValues>({
     resolver: zodResolver(categorySchema),
-    defaultValues: initialData || {
+    defaultValues: initialData ? {
+      name: initialData.name || "",
+      slug: initialData.slug || "",
+      image: initialData.image || "",
+      icon: initialData.icon || "",
+      color: initialData.color || "#10B981",
+      sort_order: Number(initialData.sort_order) || 0,
+      is_visible: initialData.is_visible ?? true,
+    } : {
       name: "",
       slug: "",
       image: "",
       icon: "",
-      color: "#000000",
+      color: "#10B981",
       sort_order: 0,
       is_visible: true,
     },
@@ -147,7 +155,7 @@ export function CategoryForm({ initialData, onSuccess }: CategoryFormProps) {
               <FormItem>
                 <FormLabel>Color Hex</FormLabel>
                 <FormControl>
-                  <Input type="color" className="h-10 px-2 py-1" {...field} />
+                  <Input type="color" className="h-10 px-2 py-1" {...field} value={field.value || "#10B981"} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
