@@ -34,11 +34,22 @@ export async function createProduct(values: ProductFormValues) {
   const slug = `${baseSlug}-${Date.now().toString().slice(-4)}`;
 
   const rawSku = productData.sku?.trim();
-  // Use custom SKU if user provided one, otherwise pass null so PostgreSQL UNIQUE allows multiple products without SKU
   const sku = rawSku && rawSku.length > 0 ? rawSku : null;
 
   const rawBarcode = productData.barcode?.trim();
   const barcode = rawBarcode && rawBarcode.length > 0 ? rawBarcode : null;
+
+  const rawExpiry = productData.expiry_date?.trim();
+  const expiry_date = rawExpiry && rawExpiry.length > 0 ? rawExpiry : null;
+
+  const rawSubcat = productData.subcategory_id?.trim();
+  const subcategory_id = rawSubcat && rawSubcat.length > 0 ? rawSubcat : null;
+
+  const rawBrand = productData.brand?.trim();
+  const brand = rawBrand && rawBrand.length > 0 ? rawBrand : null;
+
+  const rawPurchasePrice = productData.purchase_price;
+  const purchase_price = rawPurchasePrice && Number(rawPurchasePrice) > 0 ? Number(rawPurchasePrice) : null;
 
   let labels = productData.labels || [];
   if (is_unique) {
@@ -46,22 +57,44 @@ export async function createProduct(values: ProductFormValues) {
       labels = [...labels, "Unique"];
     }
   } else {
-    labels = labels.filter(l => l !== "Unique");
+    labels = labels.filter((l: string) => l !== "Unique");
   }
+
+  const search_tags = typeof productData.search_tags === "string" && productData.search_tags 
+    ? productData.search_tags.split(",").map((t: string) => t.trim()).filter(Boolean) 
+    : (Array.isArray(productData.search_tags) ? productData.search_tags : []);
 
   // Insert the product
   const { data: product, error: productError } = await supabase
     .from("products")
     .insert([
       {
-        ...productData,
-        labels,
+        name: productData.name.trim(),
         slug,
+        category_id: productData.category_id,
+        subcategory_id,
+        description: productData.description || null,
+        short_description: productData.short_description || null,
+        mrp: Number(productData.mrp) || 0,
+        selling_price: Number(productData.selling_price) || 0,
+        purchase_price,
+        discount_percentage: Number(productData.discount_percentage) || 0,
+        gst_percentage: Number(productData.gst_percentage) || 0,
+        brand,
         sku,
         barcode,
-        subcategory_id: productData.subcategory_id === "" ? null : productData.subcategory_id,
-        brand: productData.brand === "" ? null : productData.brand,
-        search_tags: typeof productData.search_tags === "string" && productData.search_tags ? productData.search_tags.split(",").map(t => t.trim()) : (productData.search_tags || []),
+        stock: Number(productData.stock) || 0,
+        minimum_stock: Number(productData.minimum_stock) || 0,
+        weight: Number(productData.weight) || 1,
+        unit: productData.unit || "kg",
+        expiry_date,
+        shelf_life: productData.shelf_life || null,
+        ingredients: productData.ingredients || null,
+        nutrition_info: productData.nutrition_info || null,
+        country_of_origin: productData.country_of_origin || "India",
+        search_tags,
+        labels,
+        is_available: productData.is_available ?? true,
       }
     ])
     .select()
@@ -75,7 +108,7 @@ export async function createProduct(values: ProductFormValues) {
       return { success: false, error: "A product with this barcode already exists. Please leave the barcode field blank or enter a unique barcode." };
     }
     if (productError.message.includes("products_slug_key")) {
-      return { success: false, error: "A product with this URL slug already exists. Please change the product name or slug." };
+      return { success: false, error: "A product with this URL slug already exists. Please change the product name." };
     }
     return { success: false, error: productError.message };
   }
@@ -102,12 +135,12 @@ export async function createProduct(values: ProductFormValues) {
   if (variants && variants.length > 0) {
     const variantInserts = variants.map((v) => ({
       product_id: product.id,
-      name: `${v.weight} ${v.unit}`,
-      weight: v.weight,
-      unit: v.unit,
-      mrp: v.mrp,
-      selling_price: v.selling_price,
-      stock: v.stock,
+      name: `${v.weight ?? 0} ${v.unit ?? "gms"}`,
+      weight: Number(v.weight) || 0,
+      unit: v.unit || "gms",
+      mrp: Number(v.mrp) || 0,
+      selling_price: Number(v.selling_price) || 0,
+      stock: Number(v.stock) || 0,
     }));
 
     const { error: variantError } = await supabase
@@ -228,7 +261,7 @@ export async function getProductById(id: string) {
   if (data && data.product_variants && data.product_variants.length > 0) {
     data.variants = data.product_variants.map((v: any) => ({
       weight: Number(v.weight ?? 0),
-      unit: v.unit || "kg",
+      unit: v.unit || "gms",
       mrp: Number(v.mrp ?? 0),
       selling_price: Number(v.selling_price ?? 0),
       stock: Number(v.stock ?? 0),
@@ -250,44 +283,82 @@ export async function updateProduct(id: string, values: ProductFormValues) {
       labels = [...labels, "Unique"];
     }
   } else {
-    labels = labels.filter(l => l !== "Unique");
+    labels = labels.filter((l: string) => l !== "Unique");
   }
 
   const rawSku = productData.sku?.trim();
-  // Pass null when sku is empty so PostgreSQL sets the column to NULL (which allows multiple products) instead of ""
   const sku = rawSku && rawSku.length > 0 ? rawSku : null;
 
   const rawBarcode = productData.barcode?.trim();
   const barcode = rawBarcode && rawBarcode.length > 0 ? rawBarcode : null;
 
-  // Build clean update payload
-  const updateData: Record<string, any> = {
-    ...productData,
-    labels,
+  const rawExpiry = productData.expiry_date?.trim();
+  const expiry_date = rawExpiry && rawExpiry.length > 0 ? rawExpiry : null;
+
+  const rawSubcat = productData.subcategory_id?.trim();
+  const subcategory_id = rawSubcat && rawSubcat.length > 0 ? rawSubcat : null;
+
+  const rawBrand = productData.brand?.trim();
+  const brand = rawBrand && rawBrand.length > 0 ? rawBrand : null;
+
+  const rawPurchasePrice = productData.purchase_price;
+  const purchase_price = rawPurchasePrice && Number(rawPurchasePrice) > 0 ? Number(rawPurchasePrice) : null;
+
+  const search_tags = typeof productData.search_tags === "string" && productData.search_tags
+    ? productData.search_tags.split(",").map((t: string) => t.trim()).filter(Boolean)
+    : (Array.isArray(productData.search_tags) ? productData.search_tags : []);
+
+  // Build clean sanitized update payload
+  const updatePayload: Record<string, any> = {
+    name: productData.name.trim(),
+    category_id: productData.category_id,
+    subcategory_id,
+    description: productData.description || null,
+    short_description: productData.short_description || null,
+    mrp: Number(productData.mrp) || 0,
+    selling_price: Number(productData.selling_price) || 0,
+    purchase_price,
+    discount_percentage: Number(productData.discount_percentage) || 0,
+    gst_percentage: Number(productData.gst_percentage) || 0,
+    brand,
     sku,
     barcode,
-    subcategory_id: productData.subcategory_id === "" ? null : productData.subcategory_id,
-    brand: productData.brand === "" ? null : productData.brand,
-    search_tags: productData.search_tags && typeof productData.search_tags === "string" 
-      ? productData.search_tags.split(",").map((t: string) => t.trim()) 
-      : (productData.search_tags || []),
+    stock: Number(productData.stock) || 0,
+    minimum_stock: Number(productData.minimum_stock) || 0,
+    weight: Number(productData.weight) || 1,
+    unit: productData.unit || "kg",
+    expiry_date,
+    shelf_life: productData.shelf_life || null,
+    ingredients: productData.ingredients || null,
+    nutrition_info: productData.nutrition_info || null,
+    country_of_origin: productData.country_of_origin || "India",
+    search_tags,
+    labels,
+    is_available: productData.is_available ?? true,
+    updated_at: new Date().toISOString(),
   };
+
+  // Only update slug if user provided an explicit non-empty slug
+  if (productData.slug && productData.slug.trim().length > 0) {
+    updatePayload.slug = productData.slug.trim();
+  }
 
   // Update the product
   const { error: productError } = await supabase
     .from("products")
-    .update(updateData)
+    .update(updatePayload)
     .eq("id", id);
 
   if (productError) {
+    console.error("Error updating product in database:", productError);
     if (productError.message.includes("products_sku_key")) {
-      return { success: false, error: "A product with this SKU already exists. Please leave the SKU field blank or enter a unique SKU." };
+      return { success: false, error: "A product with this SKU already exists." };
     }
     if (productError.message.includes("products_barcode_key")) {
-      return { success: false, error: "A product with this barcode already exists. Please leave the barcode field blank or enter a unique barcode." };
+      return { success: false, error: "A product with this barcode already exists." };
     }
     if (productError.message.includes("products_slug_key")) {
-      return { success: false, error: "A product with this URL slug already exists. Please change the product name or slug." };
+      return { success: false, error: "A product with this URL slug already exists." };
     }
     return { success: false, error: productError.message };
   }
@@ -296,7 +367,7 @@ export async function updateProduct(id: string, values: ProductFormValues) {
   await supabase.from("product_images").delete().eq("product_id", id);
   
   if (images && images.length > 0) {
-    const imageInserts = images.map((url, idx) => ({
+    const imageInserts = images.map((url: string, idx: number) => ({
       product_id: id,
       image_url: url,
       is_thumbnail: idx === 0,
@@ -316,14 +387,14 @@ export async function updateProduct(id: string, values: ProductFormValues) {
   await supabase.from("product_variants").delete().eq("product_id", id);
 
   if (variants && variants.length > 0) {
-    const variantInserts = variants.map((v) => ({
+    const variantInserts = variants.map((v: any) => ({
       product_id: id,
-      name: `${v.weight} ${v.unit}`,
-      weight: v.weight,
-      unit: v.unit,
-      mrp: v.mrp,
-      selling_price: v.selling_price,
-      stock: v.stock,
+      name: `${v.weight ?? 0} ${v.unit ?? "gms"}`,
+      weight: Number(v.weight) || 0,
+      unit: v.unit || "gms",
+      mrp: Number(v.mrp) || 0,
+      selling_price: Number(v.selling_price) || 0,
+      stock: Number(v.stock) || 0,
     }));
 
     const { error: variantError } = await supabase

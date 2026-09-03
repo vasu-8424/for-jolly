@@ -39,7 +39,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
   return (
     <PageTransition>
       <div className="pb-8">
-        <ProductForm initialData={product} />
+        <ProductForm key={product.id} initialData={product} />
       </div>
     </PageTransition>
   );
