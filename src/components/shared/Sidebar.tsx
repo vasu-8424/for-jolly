@@ -8,6 +8,7 @@ import {
   Tags, 
   ShoppingCart, 
   Users, 
+  Bike,
   Home, 
   Image as ImageIcon, 
   Ticket, 
@@ -43,6 +44,12 @@ const menuGroups = [
       { name: "Orders", href: "/orders", icon: ShoppingCart },
       { name: "Invoices", href: "/invoice", icon: FileText },
       { name: "Customers", href: "/customers", icon: Users },
+    ]
+  },
+  {
+    title: "Logistics",
+    items: [
+      { name: "Delivery Agents", href: "/delivery-agents", icon: Bike },
     ]
   },
   {

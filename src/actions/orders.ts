@@ -99,7 +99,8 @@ export async function getOrders() {
     .select(`
       *,
       profiles:users!user_id (full_name, phone_number:phone, email),
-      addresses:address_id (*)
+      addresses:address_id (*),
+      delivery_agents:agent_id (id, name, phone, email, vehicle_type, vehicle_number, status)
     `)
     .order("created_at", { ascending: false });
 
@@ -119,6 +120,7 @@ export async function getOrderById(id: string) {
       *,
       profiles:users!user_id (full_name, phone_number:phone, email),
       addresses:address_id (*),
+      delivery_agents:agent_id (id, name, phone, email, vehicle_type, vehicle_number, status),
       order_items (
         *,
         product:product_id (name, sku)

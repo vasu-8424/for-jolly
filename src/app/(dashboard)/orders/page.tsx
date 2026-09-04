@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, Clock, Download, ShoppingCart } from "lucide-react";
+import { Eye, Clock, Download, ShoppingCart, Bike } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/shared/data-table";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -89,6 +89,25 @@ export default function OrdersPage() {
       accessorKey: "total_amount",
       header: "Amount",
       cell: ({ row }) => <span className="font-semibold">₹{Number(row.getValue("total_amount")).toFixed(2)}</span>
+    },
+    {
+      accessorKey: "delivery_agents.name",
+      header: "Delivery Agent",
+      cell: ({ row }) => {
+        const order = row.original;
+        const agent = order.delivery_agents;
+        if (agent) {
+          return (
+            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 text-xs font-medium">
+              <Bike className="w-3 h-3 mr-1" />
+              {agent.name}
+            </Badge>
+          );
+        }
+        return (
+          <span className="text-xs text-muted-foreground/60 italic">Unassigned</span>
+        );
+      }
     },
     {
       accessorKey: "status",

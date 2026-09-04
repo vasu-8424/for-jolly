@@ -48,6 +48,31 @@ export const productSchema = z.object({
     selling_price: z.number().optional(),
     stock: z.number().optional(),
   })).optional(),
+  info_fields: z.array(z.object({
+    icon: z.string().optional(),
+    value: z.string().optional(),
+    label: z.string().optional(),
+  })).optional(),
+  prep_options: z.array(z.object({
+    id: z.string().optional(),
+    name: z.string().optional(),
+    description: z.string().optional(),
+    price_adjustment: z.number().optional(),
+    is_default: z.boolean().optional(),
+  })).optional(),
+  extra_options: z.array(z.object({
+    id: z.string().optional(),
+    name: z.string().optional(),
+    price_adjustment: z.number().optional(),
+    is_default: z.boolean().optional(),
+  })).optional(),
+  recipes: z.array(z.object({
+    id: z.string().optional(),
+    title: z.string().optional(),
+    description: z.string().optional(),
+    prep_time: z.string().optional(),
+    image_url: z.string().optional(),
+  })).optional(),
 });
 
 export type ProductFormValues = z.infer<typeof productSchema>;

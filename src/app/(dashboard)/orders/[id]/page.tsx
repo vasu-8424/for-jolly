@@ -12,6 +12,8 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { AgentAssignmentCard } from "@/components/orders/agent-assignment-card";
+import { createClient } from "@/lib/supabase/client";
 
 export default function OrderDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
@@ -23,7 +25,6 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
   const [isVerifying, setIsVerifying] = useState(false);
 
   const fetchOrder = async () => {
-    setIsLoading(true);
     let data = await getOrderById(resolvedParams.id);
     
     if (!data) {
@@ -37,6 +38,28 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
 
   useEffect(() => {
     fetchOrder();
+
+    // Supabase Real-time postgres_changes listener
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`order-live-${resolvedParams.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "orders",
+          filter: `id=eq.${resolvedParams.id}`,
+        },
+        () => {
+          fetchOrder();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [resolvedParams.id]);
 
   const handleStatusChange = async (newStatus: string) => {
@@ -135,20 +158,54 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {order.order_items?.map((item: any) => (
-                    <div key={item.id} className="flex items-center justify-between py-2 border-b last:border-0">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-muted rounded-md" />
-                        <div>
-                          <p className="font-medium">{item.product_name || item.product?.name || "Product"}</p>
-                          <p className="text-sm text-muted-foreground">Qty: {item.quantity} x ₹{item.unit_price}</p>
+                  {order.order_items?.map((item: any) => {
+                    const prepName = item.selected_prep_option?.name;
+                    const extras = Array.isArray(item.selected_extras) ? item.selected_extras : [];
+                    const imgUrl = item.product?.image_url || (item.product?.product_images?.[0]?.image_url);
+
+                    return (
+                      <div key={item.id} className="flex items-start justify-between py-3 border-b last:border-0">
+                        <div className="flex items-start gap-4">
+                          {imgUrl ? (
+                            <img src={imgUrl} alt={item.product_name || "Product"} className="w-12 h-12 object-cover rounded-md border shrink-0" />
+                          ) : (
+                            <div className="w-12 h-12 bg-muted rounded-md border flex items-center justify-center text-muted-foreground/50 shrink-0 text-xs font-bold">
+                              {item.product_name ? item.product_name.substring(0, 2).toUpperCase() : "IT"}
+                            </div>
+                          )}
+                          <div className="space-y-1">
+                            <p className="font-semibold text-foreground text-sm">
+                              {item.product_name || item.product?.name || "Product"}
+                            </p>
+                            
+                            {(prepName || extras.length > 0) && (
+                              <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                                {prepName && (
+                                  <span className="inline-flex items-center text-[11px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-md">
+                                    Cut: {prepName} {Number(item.selected_prep_option?.price_adjustment) > 0 ? `(+₹${item.selected_prep_option.price_adjustment})` : ""}
+                                  </span>
+                                )}
+                                {extras.map((ex: any, exIdx: number) => {
+                                  const extraName = typeof ex === "string" ? ex : ex?.name;
+                                  const extraAdj = typeof ex === "object" ? Number(ex?.price_adjustment) : 0;
+                                  return (
+                                    <span key={exIdx} className="inline-flex items-center text-[11px] font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-md">
+                                      + {extraName} {extraAdj > 0 ? `(+₹${extraAdj})` : ""}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
+
+                            <p className="text-xs text-muted-foreground">Qty: {item.quantity} x ₹{item.unit_price}</p>
+                          </div>
+                        </div>
+                        <div className="font-bold text-base">
+                          ₹{item.total_price}
                         </div>
                       </div>
-                      <div className="font-bold">
-                        ₹{item.total_price}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
                 
                 <div className="mt-6 pt-6 border-t space-y-3">
@@ -174,7 +231,7 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
                 <CardDescription>Live tracking of the order lifecycle.</CardDescription>
               </CardHeader>
               <CardContent className="pt-6">
-                <OrderTimeline currentStatus={order.status} />
+                <OrderTimeline currentStatus={order.status} assignedAgent={order.delivery_agents} />
               </CardContent>
             </Card>
           </div>
@@ -274,6 +331,8 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
                 </div>
               </CardContent>
             </Card>
+
+            <AgentAssignmentCard order={order} onAssigned={fetchOrder} />
 
             <Card className="border-border shadow-sm bg-card/80 backdrop-blur-xl">
               <CardHeader>

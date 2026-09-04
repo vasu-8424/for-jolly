@@ -10,10 +10,16 @@ import { useRouter } from "next/navigation";
 export default function EditProductPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const router = useRouter();
+  const isNew = resolvedParams.id === "new";
   const [product, setProduct] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!isNew);
 
   useEffect(() => {
+    if (isNew) {
+      setIsLoading(false);
+      return;
+    }
+
     async function fetchProduct() {
       setIsLoading(true);
       const data = await getProductById(resolvedParams.id);
@@ -26,7 +32,17 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       setIsLoading(false);
     }
     fetchProduct();
-  }, [resolvedParams.id, router]);
+  }, [resolvedParams.id, isNew, router]);
+
+  if (isNew) {
+    return (
+      <PageTransition>
+        <div className="pb-8">
+          <ProductForm />
+        </div>
+      </PageTransition>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -39,8 +55,9 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
   return (
     <PageTransition>
       <div className="pb-8">
-        <ProductForm key={product.id} initialData={product} />
+        <ProductForm key={product?.id || "product-form"} initialData={product} />
       </div>
     </PageTransition>
   );
 }
+

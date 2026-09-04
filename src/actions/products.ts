@@ -64,41 +64,59 @@ export async function createProduct(values: ProductFormValues) {
     ? productData.search_tags.split(",").map((t: string) => t.trim()).filter(Boolean) 
     : (Array.isArray(productData.search_tags) ? productData.search_tags : []);
 
+  const insertPayload = {
+    name: productData.name.trim(),
+    slug,
+    category_id: productData.category_id,
+    subcategory_id,
+    description: productData.description || null,
+    short_description: productData.short_description || null,
+    mrp: Number(productData.mrp) || 0,
+    selling_price: Number(productData.selling_price) || 0,
+    purchase_price,
+    discount_percentage: Number(productData.discount_percentage) || 0,
+    gst_percentage: Number(productData.gst_percentage) || 0,
+    brand,
+    sku,
+    barcode,
+    stock: Number(productData.stock) || 0,
+    minimum_stock: Number(productData.minimum_stock) || 0,
+    weight: Number(productData.weight) || 1,
+    unit: productData.unit || "kg",
+    expiry_date,
+    shelf_life: productData.shelf_life || null,
+    ingredients: productData.ingredients || null,
+    nutrition_info: productData.nutrition_info || null,
+    country_of_origin: productData.country_of_origin || "India",
+    search_tags,
+    labels,
+    is_available: productData.is_available ?? true,
+    info_fields: productData.info_fields || [],
+    prep_options: productData.prep_options || [],
+    extra_options: productData.extra_options || [],
+    recipes: productData.recipes || [],
+  };
+
   // Insert the product
-  const { data: product, error: productError } = await supabase
+  let { data: product, error: productError } = await supabase
     .from("products")
-    .insert([
-      {
-        name: productData.name.trim(),
-        slug,
-        category_id: productData.category_id,
-        subcategory_id,
-        description: productData.description || null,
-        short_description: productData.short_description || null,
-        mrp: Number(productData.mrp) || 0,
-        selling_price: Number(productData.selling_price) || 0,
-        purchase_price,
-        discount_percentage: Number(productData.discount_percentage) || 0,
-        gst_percentage: Number(productData.gst_percentage) || 0,
-        brand,
-        sku,
-        barcode,
-        stock: Number(productData.stock) || 0,
-        minimum_stock: Number(productData.minimum_stock) || 0,
-        weight: Number(productData.weight) || 1,
-        unit: productData.unit || "kg",
-        expiry_date,
-        shelf_life: productData.shelf_life || null,
-        ingredients: productData.ingredients || null,
-        nutrition_info: productData.nutrition_info || null,
-        country_of_origin: productData.country_of_origin || "India",
-        search_tags,
-        labels,
-        is_available: productData.is_available ?? true,
-      }
-    ])
+    .insert([insertPayload])
     .select()
     .single();
+
+  if (productError && (productError.code === "PGRST204" || productError.message.includes("schema cache") || productError.message.includes("column"))) {
+    // If structured fields columns don't exist yet in Supabase, retry without them
+    const { info_fields, prep_options, extra_options, recipes, ...basePayload } = insertPayload;
+    const retry = await supabase
+      .from("products")
+      .insert([basePayload])
+      .select()
+      .single();
+    if (!retry.error) {
+      product = retry.data;
+      productError = null;
+    }
+  }
 
   if (productError) {
     if (productError.message.includes("products_sku_key")) {
@@ -270,6 +288,11 @@ export async function getProductById(id: string) {
     data.variants = [];
   }
 
+  data.info_fields = Array.isArray(data.info_fields) ? data.info_fields : [];
+  data.prep_options = Array.isArray(data.prep_options) ? data.prep_options : [];
+  data.extra_options = Array.isArray(data.extra_options) ? data.extra_options : [];
+  data.recipes = Array.isArray(data.recipes) ? data.recipes : [];
+
   return data;
 }
 
@@ -335,6 +358,10 @@ export async function updateProduct(id: string, values: ProductFormValues) {
     search_tags,
     labels,
     is_available: productData.is_available ?? true,
+    info_fields: productData.info_fields || [],
+    prep_options: productData.prep_options || [],
+    extra_options: productData.extra_options || [],
+    recipes: productData.recipes || [],
     updated_at: new Date().toISOString(),
   };
 
@@ -344,10 +371,22 @@ export async function updateProduct(id: string, values: ProductFormValues) {
   }
 
   // Update the product
-  const { error: productError } = await supabase
+  let { error: productError } = await supabase
     .from("products")
     .update(updatePayload)
     .eq("id", id);
+
+  if (productError && (productError.code === "PGRST204" || productError.message.includes("schema cache") || productError.message.includes("column"))) {
+    // If structured fields columns don't exist yet in Supabase, retry without them
+    const { info_fields, prep_options, extra_options, recipes, ...basePayload } = updatePayload;
+    const retry = await supabase
+      .from("products")
+      .update(basePayload)
+      .eq("id", id);
+    if (!retry.error) {
+      productError = null;
+    }
+  }
 
   if (productError) {
     console.error("Error updating product in database:", productError);
