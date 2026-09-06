@@ -40,6 +40,7 @@ export const productSchema = z.object({
   labels: z.array(z.string()).optional(),
   images: z.array(z.string()).optional(),
   is_available: z.boolean(),
+  force_out_of_stock: z.boolean().optional(),
   is_unique: z.boolean(),
   variants: z.array(z.object({
     weight: z.number().optional(),
@@ -76,3 +77,17 @@ export const productSchema = z.object({
 });
 
 export type ProductFormValues = z.infer<typeof productSchema>;
+
+export const homepageSectionSchema = z.object({
+  title: z.string().min(2, "Section title must be at least 2 characters"),
+  type: z.string().default("Carousel"),
+  sort_order: z.number().default(0),
+  is_visible: z.boolean().default(true),
+  background_color: z.string().default("#ffffff"),
+  data_config: z.object({
+    category_id: z.string().min(1, "A valid category must be selected for every section"),
+    limit: z.number().optional().default(10),
+  }),
+});
+
+export type HomepageSectionFormValues = z.infer<typeof homepageSectionSchema>;

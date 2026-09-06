@@ -131,8 +131,9 @@ export function ProductForm({ initialData }: ProductFormProps) {
       nutrition_info: initialData.nutrition_info || "",
       country_of_origin: initialData.country_of_origin || "India",
       is_available: initialData.is_available ?? true,
+      force_out_of_stock: initialData.force_out_of_stock === true || (Array.isArray(initialData.labels) && initialData.labels.some((l: string) => l.toLowerCase() === "outofstock" || l.toLowerCase() === "out of stock")),
       is_unique: initialData.is_unique || (Array.isArray(initialData.labels) && initialData.labels.includes("Unique")),
-      labels: initialData.labels || [],
+      labels: (initialData.labels || []).filter((l: string) => l !== "Unique" && l.toLowerCase() !== "outofstock" && l.toLowerCase() !== "out of stock" && l.toLowerCase() !== "out_of_stock"),
       images: initialData.images || (initialData.product_images ? initialData.product_images.map((img: any) => img.image_url) : []),
       variants: (initialData.variants || []).map((v: any) => ({
         weight: Number(v.weight) || 0,
@@ -202,6 +203,7 @@ export function ProductForm({ initialData }: ProductFormProps) {
       labels: [],
       images: [],
       is_available: true,
+      force_out_of_stock: false,
       is_unique: false,
       variants: [],
       info_fields: [
@@ -480,7 +482,7 @@ export function ProductForm({ initialData }: ProductFormProps) {
                             <SelectContent>
                               {categories.map((category) => (
                                 <SelectItem key={category.id} value={category.id}>
-                                  {category.name}
+                                  {category.name} {category.is_visible === false ? "(Hidden from app)" : ""}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -1318,13 +1320,32 @@ export function ProductForm({ initialData }: ProductFormProps) {
                       render={({ field }) => (
                         <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4 shadow-sm">
                           <div className="space-y-0.5">
-                            <FormLabel className="text-base">Active Product</FormLabel>
+                            <FormLabel className="text-base">Active Product (App Visibility)</FormLabel>
                             <FormDescription>
-                              If disabled, this product will be hidden from the customer app.
+                              If disabled, this product will be completely hidden from customer search and catalog.
                             </FormDescription>
                           </div>
                           <FormControl>
                             <Switch checked={field.value} onCheckedChange={field.onChange} />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="force_out_of_stock"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-row items-center justify-between rounded-lg border border-amber-200 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-800 p-4 shadow-sm">
+                          <div className="space-y-0.5">
+                            <FormLabel className="text-base font-bold text-amber-900 dark:text-amber-200">
+                              Manual &quot;Out of Stock&quot; Override
+                            </FormLabel>
+                            <FormDescription className="text-amber-800/80 dark:text-amber-300/70">
+                              Product remains fully visible and browsable on the app, but add-to-cart is disabled and an &quot;Out of Stock&quot; badge is displayed.
+                            </FormDescription>
+                          </div>
+                          <FormControl>
+                            <Switch checked={field.value ?? false} onCheckedChange={field.onChange} />
                           </FormControl>
                         </FormItem>
                       )}
@@ -1424,6 +1445,16 @@ export function ProductForm({ initialData }: ProductFormProps) {
             )}
             
             <div className="absolute top-4 left-4 flex flex-col gap-1.5">
+              {currentValues.force_out_of_stock && (
+                <div className="bg-red-600 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-sm shadow-sm backdrop-blur-md inline-flex self-start">
+                  Out of Stock
+                </div>
+              )}
+              {currentValues.is_unique && (
+                <div className="bg-indigo-600 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-sm shadow-sm backdrop-blur-md inline-flex self-start">
+                  Unique
+                </div>
+              )}
               {currentValues.labels && currentValues.labels.map((lbl: string, idx: number) => (
                 <div key={idx} className="bg-emerald-500 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-sm shadow-sm backdrop-blur-md inline-flex self-start">
                   {lbl}

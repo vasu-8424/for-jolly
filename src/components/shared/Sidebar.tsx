@@ -11,6 +11,7 @@ import {
   Bike,
   Home, 
   Image as ImageIcon, 
+  Sparkles,
   Ticket, 
   Bell, 
   BarChart, 
@@ -57,6 +58,7 @@ const menuGroups = [
     items: [
       { name: "Homepage Builder", href: "/homepage", icon: Home },
       { name: "Banner Manager", href: "/marketing/banners", icon: ImageIcon },
+      { name: "Onboarding Screens", href: "/marketing/onboarding", icon: Sparkles },
       { name: "Coupons", href: "/marketing/coupons", icon: Ticket },
       { name: "Notifications", href: "/notifications", icon: Bell },
     ]

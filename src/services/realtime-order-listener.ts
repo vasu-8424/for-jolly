@@ -2,51 +2,65 @@ import { createClient } from "@supabase/supabase-js";
 import WebSocket from "ws";
 import { dispatchOrderAlert } from "@/lib/notifications/order-alert-service";
 
-let isListening = false;
-const processedOrders = new Set<string>();
+declare global {
+  var __order_listener_active: boolean | undefined;
+  var __order_listener_supabase: any;
+  var __processed_orders: Set<string> | undefined;
+}
+
+if (!globalThis.__processed_orders) {
+  globalThis.__processed_orders = new Set<string>();
+}
 
 export function initRealtimeOrderListener() {
-  if (isListening) return;
+  if (globalThis.__order_listener_active) {
+    return;
+  }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://imjlkcvozqekepsvxpvt.supabase.co";
-  const supabaseKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImltamxrY3ZvenFla2Vwc3Z4cHZ0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MzE3NDEwMCwiZXhwIjoyMDk4NzUwMTAwfQ.xJS5toJZ5Vd_mWyi4G7EDi3O2GW1zqUFnpUvPiegQSc";
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
   const supabase = createClient(supabaseUrl, supabaseKey, {
     realtime: {
-      transport: WebSocket,
+      transport: WebSocket as any,
+      timeout: 30000,
     },
   });
 
+  globalThis.__order_listener_supabase = supabase;
+  globalThis.__order_listener_active = true;
+
   const channel = supabase
-    .channel("server-realtime-orders-listener")
+    .channel("server-realtime-orders-singleton", {
+      config: {
+        broadcast: { self: false },
+        presence: { key: "order-listener-worker" },
+      },
+    })
     .on(
       "postgres_changes",
       { event: "INSERT", schema: "public", table: "orders" },
       async (payload) => {
         const orderId = payload.new.id;
         const orderNumber = payload.new.order_number || orderId;
+        const processed = globalThis.__processed_orders!;
 
-        if (processedOrders.has(orderId)) {
-          console.log(`[Order Listener] Order ${orderNumber} already processed, skipping duplicate.`);
+        if (processed.has(orderId)) {
           return;
         }
-        processedOrders.add(orderId);
+        processed.add(orderId);
 
-        // Keep set size reasonable
-        if (processedOrders.size > 500) {
-          const firstKey = processedOrders.values().next().value;
-          if (firstKey) processedOrders.delete(firstKey);
+        if (processed.size > 500) {
+          const firstKey = processed.values().next().value;
+          if (firstKey) processed.delete(firstKey);
         }
 
         console.log(`[Order Listener] 🚨 Detected NEW ORDER in Supabase: #${orderNumber}`);
 
-        // Wait 1.5 seconds to allow Flutter to finish inserting child order_items
+        // Wait 1.5 seconds to allow child order_items insertion to complete
         await new Promise((resolve) => setTimeout(resolve, 1500));
 
         try {
-          // Fetch full order details including joined items, user, and address
           const { data: orderData, error: fetchErr } = await supabase
             .from("orders")
             .select(`
@@ -66,7 +80,6 @@ export function initRealtimeOrderListener() {
           const userObj = o.users || {};
           const addrObj = o.addresses || {};
 
-          // Resolve clean delivery address
           let resolvedAddress =
             [addrObj.house_flat, addrObj.street_area, addrObj.landmark, addrObj.city, addrObj.pincode]
               .filter(Boolean)
@@ -79,11 +92,9 @@ export function initRealtimeOrderListener() {
             resolvedAddress += ", Kakinada, AP";
           }
 
-          // Generate Google Maps navigation link
           const searchAddress = resolvedAddress;
           const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(searchAddress)}`;
 
-          // Format items
           const itemsRaw = o.order_items || [];
           const formattedItems = itemsRaw.map((it: any) => ({
             title: it.product_name || "Item",
@@ -122,9 +133,10 @@ export function initRealtimeOrderListener() {
       }
     )
     .subscribe((status) => {
-      console.log(`[Order Listener] Realtime subscription status: ${status}`);
       if (status === "SUBSCRIBED") {
-        isListening = true;
+        console.log("[Order Listener] Realtime subscription active and ready.");
+      } else if (status === "CLOSED") {
+        globalThis.__order_listener_active = false;
       }
     });
 }

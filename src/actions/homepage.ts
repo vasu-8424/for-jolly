@@ -46,13 +46,46 @@ export async function createHomepageSection(values: {
 }) {
   try {
     const supabase = await createAdminClient();
+
+    // 1. Strict Backend Validation: Title
+    const title = values.title?.trim();
+    if (!title || title.length < 2) {
+      return { success: false, error: "Section title is required and must be at least 2 characters." };
+    }
+
+    // 2. Strict Backend Validation: Category ID
+    const categoryId = values.data_config?.category_id;
+    if (!categoryId || typeof categoryId !== "string" || categoryId.trim().length === 0 || categoryId === "all") {
+      return { 
+        success: false, 
+        error: "A valid category_id is strictly required for homepage sections to prevent product mixing. Please select a specific category." 
+      };
+    }
+
+    // 3. Verify category existence in database
+    const { data: categoryExists, error: catCheckError } = await supabase
+      .from("categories")
+      .select("id, name")
+      .eq("id", categoryId.trim())
+      .single();
+
+    if (catCheckError || !categoryExists) {
+      return { 
+        success: false, 
+        error: `Category ID "${categoryId}" does not exist in the database. Please select a valid category.` 
+      };
+    }
+
     const payload = {
-      title: values.title.trim(),
+      title,
       type: values.type || "Collection",
       sort_order: Number(values.sort_order) || 0,
       is_visible: values.is_visible ?? true,
       background_color: values.background_color || "#ffffff",
-      data_config: values.data_config || {},
+      data_config: {
+        category_id: categoryExists.id,
+        limit: Number(values.data_config?.limit) || 10,
+      },
     };
 
     const { data, error } = await supabase
@@ -75,6 +108,46 @@ export async function createHomepageSection(values: {
 export async function updateHomepageSection(id: string, updates: any) {
   try {
     const supabase = await createAdminClient();
+
+    // Strict Backend Validation if title is being updated
+    if (updates.title !== undefined) {
+      const title = String(updates.title).trim();
+      if (!title || title.length < 2) {
+        return { success: false, error: "Section title must be at least 2 characters." };
+      }
+      updates.title = title;
+    }
+
+    // Strict Backend Validation if data_config or category_id is being updated
+    if (updates.data_config !== undefined) {
+      const categoryId = updates.data_config?.category_id;
+      if (!categoryId || typeof categoryId !== "string" || categoryId.trim().length === 0 || categoryId === "all") {
+        return { 
+          success: false, 
+          error: "A valid category_id is strictly required for homepage sections to prevent product mixing. Please select a specific category." 
+        };
+      }
+
+      // Verify category existence in database
+      const { data: categoryExists, error: catCheckError } = await supabase
+        .from("categories")
+        .select("id")
+        .eq("id", categoryId.trim())
+        .single();
+
+      if (catCheckError || !categoryExists) {
+        return { 
+          success: false, 
+          error: `Category ID "${categoryId}" does not exist in the database.` 
+        };
+      }
+
+      updates.data_config = {
+        category_id: categoryExists.id,
+        limit: Number(updates.data_config?.limit) || 10,
+      };
+    }
+
     const { error } = await supabase
       .from("homepage_sections")
       .update(updates)

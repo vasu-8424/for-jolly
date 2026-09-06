@@ -96,6 +96,9 @@ export default function HomepageBuilder() {
       if (!title.trim()) {
         throw new Error("Section title is required.");
       }
+      if (!selectedCategory || selectedCategory === "all" || selectedCategory.trim().length === 0) {
+        throw new Error("Please select a target category for this section to prevent mixing products.");
+      }
 
       const payload = {
         title: title.trim(),
@@ -104,7 +107,7 @@ export default function HomepageBuilder() {
         is_visible: isVisible,
         background_color: bgColor,
         data_config: {
-          category_id: selectedCategory || null,
+          category_id: selectedCategory.trim(),
           limit: 10,
         },
       };
@@ -310,11 +313,29 @@ export default function HomepageBuilder() {
 
                       {/* Section Info */}
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-bold text-foreground truncate">{section.title}</span>
                           <Badge variant="outline" className="text-[10px]">
                             {section.type}
                           </Badge>
+                          {(() => {
+                            const catId = section.data_config?.category_id;
+                            const targetCat = categories.find((c: any) => c.id === catId);
+                            if (!targetCat) {
+                              return (
+                                <Badge variant="outline" className="text-[10px] bg-red-50 text-red-600 border-red-300">
+                                  No Category Linked
+                                </Badge>
+                              );
+                            }
+                            return (
+                              <Badge variant="secondary" className="text-[10px] gap-1 font-medium">
+                                <Tag className="w-3 h-3 text-muted-foreground" />
+                                {targetCat.name}
+                                {targetCat.is_visible === false ? " (Hidden)" : ""}
+                              </Badge>
+                            );
+                          })()}
                         </div>
                         <p className="text-xs text-muted-foreground mt-0.5">
                           Order: #{idx + 1} • {section.is_visible ? "Visible on App" : "Hidden"}
@@ -524,16 +545,15 @@ export default function HomepageBuilder() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase text-muted-foreground">Filter by Category</label>
+                <label className="text-xs font-semibold uppercase text-muted-foreground">Target Category * (Required)</label>
                 <Select value={selectedCategory} onValueChange={(val) => setSelectedCategory(val || "")}>
                   <SelectTrigger>
-                    <SelectValue placeholder="All Categories" />
+                    <SelectValue placeholder="Select target category..." />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Categories</SelectItem>
                     {categories.map((c: any) => (
                       <SelectItem key={c.id} value={c.id}>
-                        {c.name}
+                        {c.name} {c.is_visible === false ? "(Category Hidden)" : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>

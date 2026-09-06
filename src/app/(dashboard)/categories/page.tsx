@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Pencil, Trash2, Tags } from "lucide-react";
+import { Plus, Pencil, Trash2, Tags, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { DataTable } from "@/components/shared/data-table";
 import { PageTransition } from "@/components/layout/page-transition";
 import { EmptyState } from "@/components/shared/empty-state";
 import { CategoryForm } from "@/components/categories/category-form";
-import { getCategories, deleteCategory } from "@/actions/categories";
+import { getCategories, deleteCategory, toggleCategoryVisibility } from "@/actions/categories";
 import { Badge } from "@/components/ui/badge";
 import {
   Sheet,
@@ -34,6 +35,24 @@ export default function CategoriesPage() {
     queryFn: getCategories,
   });
 
+  const toggleVisibilityMutation = useMutation({
+    mutationFn: async ({ id, is_visible }: { id: string; is_visible: boolean }) => {
+      const res = await toggleCategoryVisibility(id, is_visible);
+      if (!res.success) {
+        throw new Error(res.error || "Failed to update category visibility");
+      }
+      return res;
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      toast.success(data?.message || "Category visibility updated");
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Failed to update category visibility");
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const res = await deleteCategory(id);
@@ -44,6 +63,7 @@ export default function CategoriesPage() {
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["categories"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
       toast.success(data?.message || "Category deleted successfully");
     },
     onError: (err: any) => {
@@ -64,16 +84,28 @@ export default function CategoriesPage() {
       cell: ({ row }) => (
         <div className="flex items-center gap-3">
           <div 
-            className="w-8 h-8 rounded-full border border-border" 
+            className="w-8 h-8 rounded-full border border-border flex-shrink-0" 
             style={{ backgroundColor: row.original.color || '#e2e8f0' }} 
           />
-          <span className="font-medium">{String(row.getValue("name"))}</span>
+          <div className="flex flex-col">
+            <span className="font-semibold text-primary">{String(row.getValue("name"))}</span>
+            <span className="text-xs text-muted-foreground">/{row.original.slug}</span>
+          </div>
         </div>
       ),
     },
     {
-      accessorKey: "slug",
-      header: "Slug",
+      accessorKey: "product_count",
+      header: "Products",
+      cell: ({ row }) => {
+        const count = row.original.product_count ?? 0;
+        return (
+          <Badge variant="secondary" className="gap-1 font-mono text-xs">
+            <Package className="w-3 h-3 text-muted-foreground" />
+            {count} {count === 1 ? "product" : "products"}
+          </Badge>
+        );
+      },
     },
     {
       accessorKey: "sort_order",
@@ -81,12 +113,25 @@ export default function CategoriesPage() {
     },
     {
       accessorKey: "is_visible",
-      header: "Visibility",
-      cell: ({ row }) => (
-        <Badge variant={row.getValue("is_visible") ? "default" : "secondary"}>
-          {row.getValue("is_visible") ? "Visible" : "Hidden"}
-        </Badge>
-      ),
+      header: "Customer Visibility",
+      cell: ({ row }) => {
+        const isVisible = Boolean(row.getValue("is_visible"));
+        const id = row.original.id;
+        return (
+          <div className="flex items-center gap-2.5">
+            <Switch
+              checked={isVisible}
+              disabled={toggleVisibilityMutation.isPending}
+              onCheckedChange={(checked) => {
+                toggleVisibilityMutation.mutate({ id, is_visible: checked });
+              }}
+            />
+            <Badge variant={isVisible ? "default" : "outline"} className={isVisible ? "bg-emerald-600 text-white" : "text-amber-600 border-amber-300"}>
+              {isVisible ? "Visible" : "Hidden (Cascaded)"}
+            </Badge>
+          </div>
+        );
+      },
     },
     {
       id: "actions",

@@ -8,10 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Image as ImageIcon, Link as LinkIcon, Trash2, Pencil, Eye, EyeOff, Loader2, Sparkles, MoveRight } from "lucide-react";
+import { Plus, Image as ImageIcon, Link as LinkIcon, Trash2, Pencil, Loader2, Sparkles, ExternalLink } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getBanners, createBanner, updateBanner, deleteBanner, getHomepageSections } from "@/actions/homepage";
+import { getBanners, createBanner, updateBanner, deleteBanner, BannerRecord } from "@/actions/banners";
 import { ImageUpload } from "@/components/shared/image-upload";
 import toast from "react-hot-toast";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -19,15 +18,15 @@ import type { ColumnDef } from "@tanstack/react-table";
 export default function BannerManagerPage() {
   const queryClient = useQueryClient();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [editingBanner, setEditingBanner] = useState<any>(null);
+  const [editingBanner, setEditingBanner] = useState<BannerRecord | null>(null);
 
   // Form State
   const [title, setTitle] = useState("");
+  const [subtitle, setSubtitle] = useState("");
   const [imageUrl, setImageUrl] = useState("");
-  const [deepLink, setDeepLink] = useState("");
-  const [sortOrder, setSortOrder] = useState(0);
-  const [sectionId, setSectionId] = useState<string>("top");
-  const [isVisible, setIsVisible] = useState(true);
+  const [linkTarget, setLinkTarget] = useState("");
+  const [displayOrder, setDisplayOrder] = useState(0);
+  const [isActive, setIsActive] = useState(true);
 
   // Queries
   const { data: banners = [], isLoading } = useQuery({
@@ -35,30 +34,25 @@ export default function BannerManagerPage() {
     queryFn: getBanners,
   });
 
-  const { data: sections = [] } = useQuery({
-    queryKey: ["homepage-sections"],
-    queryFn: getHomepageSections,
-  });
-
   const openCreateDialog = () => {
     setTitle("");
+    setSubtitle("");
     setImageUrl("");
-    setDeepLink("");
-    setSortOrder(banners.length);
-    setSectionId("top");
-    setIsVisible(true);
+    setLinkTarget("");
+    setDisplayOrder(banners.length);
+    setIsActive(true);
     setEditingBanner(null);
     setIsCreateOpen(true);
   };
 
-  const openEditDialog = (banner: any) => {
+  const openEditDialog = (banner: BannerRecord) => {
     setEditingBanner(banner);
     setTitle(banner.title || "");
-    setImageUrl(banner.image_url || banner.mobile_image_url || banner.desktop_image_url || "");
-    setDeepLink(banner.deep_link || "");
-    setSortOrder(banner.sort_order ?? 0);
-    setSectionId(banner.section_id || "top");
-    setIsVisible(banner.is_visible ?? true);
+    setSubtitle(banner.subtitle || "");
+    setImageUrl(banner.image_url || "");
+    setLinkTarget(banner.link_target || "");
+    setDisplayOrder(banner.display_order ?? 0);
+    setIsActive(banner.is_active ?? true);
     setIsCreateOpen(true);
   };
 
@@ -70,12 +64,12 @@ export default function BannerManagerPage() {
       }
 
       const payload = {
-        title: title || "Promotional Banner",
+        title: title || undefined,
+        subtitle: subtitle || undefined,
         image_url: imageUrl,
-        deep_link: deepLink,
-        sort_order: sortOrder,
-        is_visible: isVisible,
-        section_id: sectionId === "top" ? null : sectionId,
+        link_target: linkTarget || undefined,
+        display_order: displayOrder,
+        is_active: isActive,
       };
 
       if (editingBanner?.id) {
@@ -90,7 +84,6 @@ export default function BannerManagerPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["banners"] });
-      queryClient.invalidateQueries({ queryKey: ["homepage-sections"] });
       toast.success(editingBanner ? "Banner updated successfully!" : "Banner uploaded and published!");
       setIsCreateOpen(false);
     },
@@ -107,7 +100,6 @@ export default function BannerManagerPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["banners"] });
-      queryClient.invalidateQueries({ queryKey: ["homepage-sections"] });
       toast.success("Banner deleted successfully");
     },
     onError: (err: any) => {
@@ -116,28 +108,28 @@ export default function BannerManagerPage() {
   });
 
   const toggleVisibilityMutation = useMutation({
-    mutationFn: async ({ id, is_visible }: { id: string; is_visible: boolean }) => {
-      const res = await updateBanner(id, { is_visible });
+    mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
+      const res = await updateBanner(id, { is_active });
       if (!res.success) throw new Error(res.error || "Failed to toggle status");
       return res;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["banners"] });
-      toast.success("Banner visibility updated");
+      toast.success("Banner status updated");
     },
   });
 
-  const columns: ColumnDef<any>[] = [
+  const columns: ColumnDef<BannerRecord>[] = [
     {
       accessorKey: "image_url",
       header: "Banner Preview",
       cell: ({ row }) => {
-        const img = row.original.image_url || row.original.mobile_image_url || row.original.desktop_image_url;
+        const b = row.original;
         return (
           <div className="flex items-center gap-3">
             <div className="w-24 h-12 bg-muted rounded-lg border overflow-hidden flex-shrink-0 shadow-sm">
-              {img ? (
-                <img src={img} alt={row.original.title} className="w-full h-full object-cover" />
+              {b.image_url ? (
+                <img src={b.image_url} alt={b.title || "Banner"} className="w-full h-full object-cover" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-muted-foreground">
                   <ImageIcon className="w-4 h-4" />
@@ -145,15 +137,18 @@ export default function BannerManagerPage() {
               )}
             </div>
             <div className="flex flex-col">
-              <span className="font-semibold text-foreground text-sm">{row.original.title}</span>
+              <span className="font-semibold text-foreground text-sm">{b.title || "Untitled Banner"}</span>
+              {b.subtitle && (
+                <span className="text-xs text-muted-foreground line-clamp-1">{b.subtitle}</span>
+              )}
               <span className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                {row.original.deep_link ? (
+                {b.link_target ? (
                   <>
                     <LinkIcon className="w-3 h-3 text-primary" />
-                    <span className="truncate max-w-[200px]">{row.original.deep_link}</span>
+                    <span className="truncate max-w-[200px]">{b.link_target}</span>
                   </>
                 ) : (
-                  "No action link"
+                  "No link attached"
                 )}
               </span>
             </div>
@@ -162,32 +157,23 @@ export default function BannerManagerPage() {
       },
     },
     {
-      accessorKey: "section_id",
-      header: "Placement",
+      accessorKey: "display_order",
+      header: "Carousel Order",
       cell: ({ row }) => (
-        <Badge variant="secondary" className="font-medium">
-          {row.original.homepage_sections?.title || "Top Scrolling Hero"}
-        </Badge>
+        <span className="font-mono text-sm font-semibold">#{row.original.display_order ?? 0}</span>
       ),
     },
     {
-      accessorKey: "sort_order",
-      header: "Display Order",
-      cell: ({ row }) => (
-        <span className="font-mono text-sm font-semibold">#{row.original.sort_order ?? 0}</span>
-      ),
-    },
-    {
-      accessorKey: "is_visible",
-      header: "Status",
+      accessorKey: "is_active",
+      header: "App Visibility",
       cell: ({ row }) => {
-        const active = row.original.is_visible ?? true;
+        const active = row.original.is_active ?? true;
         return (
           <div className="flex items-center gap-2">
             <Switch
               checked={active}
               onCheckedChange={(checked) =>
-                toggleVisibilityMutation.mutate({ id: row.original.id, is_visible: checked })
+                toggleVisibilityMutation.mutate({ id: row.original.id, is_active: checked })
               }
             />
             <span className="text-xs font-medium text-muted-foreground">
@@ -236,7 +222,7 @@ export default function BannerManagerPage() {
               Upload and organize auto-scrolling promotional banners displayed at the top of your mobile app homepage.
             </p>
           </div>
-          <Button onClick={openCreateDialog} className="gap-2 shadow-md">
+          <Button onClick={openCreateDialog} className="gap-2 shadow-md bg-emerald-600 hover:bg-emerald-700 text-white font-semibold">
             <Plus className="w-4 h-4" /> Upload Banner
           </Button>
         </div>
@@ -248,32 +234,32 @@ export default function BannerManagerPage() {
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-emerald-400 animate-pulse" />
                 <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-                  Live App Hero Banner Carousel ({banners.filter((b: any) => b.is_visible).length} Active)
+                  Live App Hero Banner Carousel ({banners.filter((b) => b.is_active).length} Active)
                 </span>
               </div>
-              <span className="text-xs text-muted-foreground">Auto-scrolls in Flutter App</span>
+              <span className="text-xs text-muted-foreground">Ordered by Carousel Order #</span>
             </div>
 
             <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
-              {banners.map((b: any, idx: number) => {
-                const img = b.image_url || b.mobile_image_url || b.desktop_image_url;
+              {banners.map((b, idx) => {
                 return (
                   <div
                     key={b.id}
                     className={`relative w-72 h-36 rounded-xl overflow-hidden border flex-shrink-0 shadow-md transition-all ${
-                      b.is_visible ? "border-emerald-500/50" : "opacity-40 grayscale"
+                      b.is_active ? "border-emerald-500/50" : "opacity-40 grayscale"
                     }`}
                   >
-                    {img ? (
-                      <img src={img} alt={b.title} className="w-full h-full object-cover" />
+                    {b.image_url ? (
+                      <img src={b.image_url} alt={b.title || "Banner"} className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center bg-muted">
                         <ImageIcon className="w-8 h-8 text-muted-foreground/40" />
                       </div>
                     )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-end p-3 text-white">
-                      <p className="text-xs font-bold truncate">{b.title}</p>
-                      <p className="text-[10px] text-white/80 mt-0.5">Order #{idx + 1}</p>
+                      <p className="text-xs font-bold truncate">{b.title || "Untitled Banner"}</p>
+                      {b.subtitle && <p className="text-[10px] text-white/80 line-clamp-1">{b.subtitle}</p>}
+                      <p className="text-[10px] text-emerald-400 font-mono mt-0.5">Order #{b.display_order}</p>
                     </div>
                   </div>
                 );
@@ -293,7 +279,7 @@ export default function BannerManagerPage() {
             <p className="text-muted-foreground mt-2 max-w-md text-center text-sm">
               Upload your first promotional banner to display in the top scrolling carousel of your mobile app homepage.
             </p>
-            <Button onClick={openCreateDialog} className="mt-6 gap-2">
+            <Button onClick={openCreateDialog} className="mt-6 gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold">
               <Plus className="w-4 h-4" /> Upload Banner
             </Button>
           </div>
@@ -307,21 +293,30 @@ export default function BannerManagerPage() {
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <ImageIcon className="w-5 h-5 text-primary" />
+              <ImageIcon className="w-5 h-5 text-emerald-600" />
               {editingBanner ? "Edit Promotional Banner" : "Upload New Promotional Banner"}
             </DialogTitle>
             <DialogDescription>
-              This banner will appear in the auto-scrolling carousel at the top of your app homepage.
+              This banner will appear in the auto-scrolling carousel at the top of your mobile app homepage.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-3">
             <div className="space-y-2">
-              <label className="text-xs font-semibold uppercase text-muted-foreground">Banner Title / Campaign Name</label>
+              <label className="text-xs font-semibold uppercase text-muted-foreground">Banner Title / Campaign Heading</label>
               <Input
                 placeholder="e.g. 50% Off Fresh Vegetables"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase text-muted-foreground">Subtitle / Tagline (Optional)</label>
+              <Input
+                placeholder="e.g. Organic & Handpicked Daily"
+                value={subtitle}
+                onChange={(e) => setSubtitle(e.target.value)}
               />
             </div>
 
@@ -337,48 +332,31 @@ export default function BannerManagerPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase text-muted-foreground">Action / Deep Link (Optional)</label>
+                <label className="text-xs font-semibold uppercase text-muted-foreground">Tap Action / Link Target (Optional)</label>
                 <Input
-                  placeholder="e.g. /category/vegetables or URL"
-                  value={deepLink}
-                  onChange={(e) => setDeepLink(e.target.value)}
+                  placeholder="e.g. /category/sea-food"
+                  value={linkTarget}
+                  onChange={(e) => setLinkTarget(e.target.value)}
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase text-muted-foreground">Sort Order</label>
+                <label className="text-xs font-semibold uppercase text-muted-foreground">Display Order</label>
                 <Input
                   type="number"
                   placeholder="0"
-                  value={sortOrder}
-                  onChange={(e) => setSortOrder(Number(e.target.value))}
+                  value={displayOrder}
+                  onChange={(e) => setDisplayOrder(Number(e.target.value))}
                 />
               </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-semibold uppercase text-muted-foreground">Placement</label>
-              <Select value={sectionId} onValueChange={(val) => setSectionId(val || "top")}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select Placement" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="top">Top Scrolling Hero Carousel (Default)</SelectItem>
-                  {sections.map((sec: any) => (
-                    <SelectItem key={sec.id} value={sec.id}>
-                      Section: {sec.title} ({sec.type})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
 
             <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/20">
               <div className="space-y-0.5">
                 <span className="text-sm font-medium">Publish to App</span>
-                <p className="text-xs text-muted-foreground">Make this banner visible to app users immediately.</p>
+                <p className="text-xs text-muted-foreground">Make this banner active in the mobile app carousel immediately.</p>
               </div>
-              <Switch checked={isVisible} onCheckedChange={setIsVisible} />
+              <Switch checked={isActive} onCheckedChange={setIsActive} />
             </div>
           </div>
 
@@ -386,7 +364,7 @@ export default function BannerManagerPage() {
             <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+            <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold">
               {saveMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               {editingBanner ? "Update Banner" : "Upload & Publish"}
             </Button>

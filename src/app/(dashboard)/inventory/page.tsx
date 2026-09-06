@@ -4,24 +4,51 @@ import { PageTransition } from "@/components/layout/page-transition";
 import { DataTable } from "@/components/shared/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertTriangle, History, Package } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
-import { getProducts } from "@/actions/products";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { getProducts, toggleProductOutOfStock } from "@/actions/products";
 import Link from "next/link";
+import toast from "react-hot-toast";
 
 export default function InventoryPage() {
+  const queryClient = useQueryClient();
+
   const { data: products = [], isLoading } = useQuery({
     queryKey: ["products"],
     queryFn: getProducts,
   });
 
+  const toggleOutOfStockMutation = useMutation({
+    mutationFn: async ({ id, force_out_of_stock }: { id: string; force_out_of_stock: boolean }) => {
+      const res = await toggleProductOutOfStock(id, force_out_of_stock);
+      if (!res.success) {
+        throw new Error(res.error || "Failed to update stock status");
+      }
+      return res;
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      toast.success(data?.message || "Stock override updated");
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Failed to update stock status");
+    },
+  });
+
   const inventoryData = products.map((product: any) => {
     const stock = Number(product.stock ?? 0);
-    const minStock = Number(product.minimum_stock ?? 10);
+    const minStock = Number(product.minimum_stock ?? 5);
+    const isForceOos = product.force_out_of_stock === true;
+    const isEffectiveOos = isForceOos || stock <= 0;
+
     let status = "In Stock";
-    if (stock === 0) status = "Out of Stock";
-    else if (stock <= minStock) status = "Low Stock";
+    if (isEffectiveOos) {
+      status = isForceOos ? "Out of Stock (Manual)" : "Out of Stock (0 Units)";
+    } else if (stock <= minStock) {
+      status = "Low Stock";
+    }
 
     return {
       id: product.id,
@@ -29,12 +56,14 @@ export default function InventoryPage() {
       sku: product.sku || `SKU-${product.id.slice(0, 5)}`,
       stock,
       minStock,
+      isForceOos,
+      isEffectiveOos,
       status,
     };
   });
 
-  const outOfStockCount = inventoryData.filter((i: any) => i.stock === 0).length;
-  const lowStockCount = inventoryData.filter((i: any) => i.stock > 0 && i.stock <= i.minStock).length;
+  const outOfStockCount = inventoryData.filter((i: any) => i.isEffectiveOos).length;
+  const lowStockCount = inventoryData.filter((i: any) => !i.isEffectiveOos && i.stock <= i.minStock).length;
   const totalCount = inventoryData.length;
 
   const columns = [
@@ -61,13 +90,38 @@ export default function InventoryPage() {
     },
     {
       accessorKey: "status",
-      header: "Status",
+      header: "Effective Status",
       cell: ({ row }: any) => {
         const status = row.getValue("status");
+        const isOos = String(status).includes("Out of Stock");
         return (
-          <Badge variant={status === "Out of Stock" ? "destructive" : status === "Low Stock" ? "warning" : "default"}>
+          <Badge variant={isOos ? "destructive" : status === "Low Stock" ? "warning" : "default"}>
             {status}
           </Badge>
+        );
+      }
+    },
+    {
+      id: "manual_override",
+      header: "Manual Override",
+      cell: ({ row }: any) => {
+        const item = row.original;
+        return (
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={item.isForceOos}
+              disabled={toggleOutOfStockMutation.isPending}
+              onCheckedChange={(checked) => {
+                toggleOutOfStockMutation.mutate({
+                  id: item.id,
+                  force_out_of_stock: checked,
+                });
+              }}
+            />
+            <span className="text-xs text-muted-foreground">
+              {item.isForceOos ? "Forced OOS" : "Auto"}
+            </span>
+          </div>
         );
       }
     },
@@ -77,7 +131,7 @@ export default function InventoryPage() {
       cell: ({ row }: any) => (
         <div className="flex items-center justify-end gap-2">
           <Button size="sm" variant="outline" asChild>
-            <Link href={`/products/${row.original.id}`}>Manage</Link>
+            <Link href={`/products/${row.original.id}`}>Edit</Link>
           </Button>
         </div>
       )

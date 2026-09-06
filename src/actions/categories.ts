@@ -8,14 +8,46 @@ export async function getCategories() {
   const supabase = await createAdminClient();
   const { data, error } = await supabase
     .from("categories")
-    .select("*")
+    .select(`
+      *,
+      products (count)
+    `)
     .order("sort_order", { ascending: true });
 
   if (error) {
     console.error("Error fetching categories:", error);
     return [];
   }
-  return data;
+  return (data || []).map((cat: any) => ({
+    ...cat,
+    product_count: cat.products?.[0]?.count ?? 0,
+  }));
+}
+
+export async function toggleCategoryVisibility(id: string, is_visible: boolean) {
+  const supabase = await createAdminClient();
+  const { data, error } = await supabase
+    .from("categories")
+    .update({ is_visible })
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Error toggling category visibility:", error);
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/categories");
+  revalidatePath("/products");
+  revalidatePath("/homepage");
+  return { 
+    success: true, 
+    data,
+    message: is_visible 
+      ? `Category "${data.name}" is now Visible (products are active).` 
+      : `Category "${data.name}" is now Hidden (products cascaded to hidden).` 
+  };
 }
 
 export async function createCategory(values: CategoryFormValues) {

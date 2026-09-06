@@ -1,11 +1,12 @@
 "use client";
 
-import { Plus, Pencil, Trash2, PackageOpen } from "lucide-react";
+import { Plus, Pencil, Trash2, PackageOpen, AlertOctagon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { DataTable } from "@/components/shared/data-table";
 import { PageTransition } from "@/components/layout/page-transition";
 import { EmptyState } from "@/components/shared/empty-state";
-import { getProducts, deleteProduct } from "@/actions/products";
+import { getProducts, deleteProduct, toggleProductOutOfStock } from "@/actions/products";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -21,6 +22,23 @@ export default function ProductsPage() {
   const { data: products = [], isLoading } = useQuery({
     queryKey: ["products"],
     queryFn: getProducts,
+  });
+
+  const toggleOutOfStockMutation = useMutation({
+    mutationFn: async ({ id, force_out_of_stock }: { id: string; force_out_of_stock: boolean }) => {
+      const res = await toggleProductOutOfStock(id, force_out_of_stock);
+      if (!res.success) {
+        throw new Error(res.error || "Failed to update stock status");
+      }
+      return res;
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      toast.success(data?.message || "Product stock status updated");
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Failed to update stock status");
+    },
   });
 
   const deleteMutation = useMutation({
@@ -73,9 +91,20 @@ export default function ProductsPage() {
     {
       accessorKey: "categories.name",
       header: "Category",
-      cell: ({ row }) => (
-        <span className="text-sm">{row.original.categories?.name || "Uncategorized"}</span>
-      )
+      cell: ({ row }) => {
+        const cat = row.original.categories;
+        const isCatVisible = cat ? cat.is_visible !== false : true;
+        return (
+          <div className="flex flex-col gap-1 items-start">
+            <span className="text-sm font-medium">{cat?.name || "Uncategorized"}</span>
+            {!isCatVisible && (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/30 dark:text-amber-400">
+                Category Hidden
+              </Badge>
+            )}
+          </div>
+        );
+      }
     },
     {
       accessorKey: "selling_price",
@@ -84,25 +113,82 @@ export default function ProductsPage() {
     },
     {
       accessorKey: "stock",
-      header: "Inventory",
+      header: "Inventory Status",
       cell: ({ row }) => {
-        const stock = Number(row.getValue("stock"));
-        const minStock = Number(row.original.minimum_stock);
+        const stock = Number(row.getValue("stock") ?? 0);
+        const minStock = Number(row.original.minimum_stock ?? 5);
+        const isForceOos = row.original.force_out_of_stock === true;
+        const isEffectiveOos = isForceOos || stock <= 0;
+
+        if (isEffectiveOos) {
+          return (
+            <div className="flex flex-col gap-1 items-start">
+              <Badge variant="destructive" className="bg-red-600 text-white font-semibold">
+                Out of Stock
+              </Badge>
+              <span className="text-[10px] text-muted-foreground font-mono">
+                {isForceOos ? "Manual Override" : "0 Units Left"}
+              </span>
+            </div>
+          );
+        }
+
         return (
-          <Badge variant={stock === 0 ? "destructive" : stock <= minStock ? "warning" : "secondary"}>
-            {stock} in stock
-          </Badge>
+          <div className="flex flex-col gap-0.5 items-start">
+            <Badge variant={stock <= minStock ? "warning" : "secondary"}>
+              {stock} in stock
+            </Badge>
+            {stock <= minStock && (
+              <span className="text-[10px] text-amber-600 font-medium">Low Stock</span>
+            )}
+          </div>
+        );
+      }
+    },
+    {
+      id: "force_out_of_stock",
+      header: "Force Out of Stock",
+      cell: ({ row }) => {
+        const product = row.original;
+        const isForceOos = product.force_out_of_stock === true;
+        return (
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={isForceOos}
+              disabled={toggleOutOfStockMutation.isPending}
+              onCheckedChange={(checked) => {
+                toggleOutOfStockMutation.mutate({
+                  id: product.id,
+                  force_out_of_stock: checked,
+                });
+              }}
+            />
+            <span className="text-xs text-muted-foreground">
+              {isForceOos ? "Forced OOS" : "Auto"}
+            </span>
+          </div>
         );
       }
     },
     {
       accessorKey: "is_available",
-      header: "Status",
-      cell: ({ row }) => (
-        <Badge variant={row.getValue("is_available") ? "default" : "outline"}>
-          {row.getValue("is_available") ? "Active" : "Hidden"}
-        </Badge>
-      ),
+      header: "App Visibility",
+      cell: ({ row }) => {
+        const isAvailable = Boolean(row.getValue("is_available"));
+        const isCatVisible = row.original.categories ? row.original.categories.is_visible !== false : true;
+        
+        if (!isAvailable) {
+          return <Badge variant="outline" className="text-muted-foreground">Product Inactive</Badge>;
+        }
+        if (!isCatVisible) {
+          return (
+            <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-400">
+              Hidden (by Category)
+            </Badge>
+          );
+        }
+        return <Badge variant="default" className="bg-emerald-600 text-white">Live on App</Badge>;
+      },
     },
     {
       id: "actions",
