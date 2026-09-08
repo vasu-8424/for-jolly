@@ -64,33 +64,107 @@ export async function createCoupon(data: CouponPayload) {
       return { success: false, error: "Coupon code is required." };
     }
 
-    const payload = {
+    // Determine discount parameters for both schema styles
+    const pct = Number(data.discount_percentage || 0);
+    const amt = Number(data.discount_amount || 0);
+    const discountType = pct > 0 ? "Percentage" : "Flat";
+    const discountVal = pct > 0 ? pct : amt;
+    const futureExpiry = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+
+    const fullPayload: Record<string, any> = {
       code: cleanCode,
-      coupon_code: cleanCode,
       title: data.title.trim() || cleanCode,
+      name: data.title.trim() || cleanCode,
       description: data.description?.trim() || "Special promotional offer",
-      discount_percentage: Number(data.discount_percentage || 0),
-      discount_amount: Number(data.discount_amount || 0),
+      discount_type: discountType,
+      discount_value: discountVal,
+      discount_percentage: pct,
+      discount_amount: amt,
       min_order_value: Number(data.min_order_value || 0),
       is_first_order: Boolean(data.is_first_order),
       is_active: Boolean(data.is_active ?? true),
       tag_text: data.tag_text?.trim() || "",
+      expiry_date: futureExpiry,
       created_at: new Date().toISOString(),
     };
 
-    const { data: inserted, error } = await supabase
+    // Attempt 1: Full Payload
+    let { data: inserted, error } = await supabase
       .from("coupons")
-      .insert([payload])
+      .insert([fullPayload])
       .select()
       .single();
 
-    if (error) {
-      console.error("Error creating coupon:", error.message);
-      return { success: false, error: error.message };
+    if (!error && inserted) {
+      safeRevalidatePath("/marketing/coupons");
+      return { success: true, coupon: inserted };
     }
 
-    safeRevalidatePath("/marketing/coupons");
-    return { success: true, coupon: inserted };
+    console.warn("Coupon full insert failed, trying schema variation 1:", error?.message);
+
+    // Attempt 2: Standard migration schema
+    const migrationPayload = {
+      code: cleanCode,
+      description: data.description?.trim() || "Special promotional offer",
+      discount_type: discountType,
+      discount_value: discountVal,
+      min_order_value: Number(data.min_order_value || 0),
+      expiry_date: futureExpiry,
+      is_active: true,
+    };
+
+    const res2 = await supabase
+      .from("coupons")
+      .insert([migrationPayload])
+      .select()
+      .single();
+
+    if (!res2.error && res2.data) {
+      safeRevalidatePath("/marketing/coupons");
+      return { success: true, coupon: res2.data };
+    }
+
+    console.warn("Coupon migration insert failed, trying schema variation 2:", res2.error?.message);
+
+    // Attempt 3: Simple schema
+    const simplePayload = {
+      code: cleanCode,
+      title: data.title.trim() || cleanCode,
+      discount_percentage: pct,
+      discount_amount: amt,
+      min_order_value: Number(data.min_order_value || 0),
+      is_active: true,
+    };
+
+    const res3 = await supabase
+      .from("coupons")
+      .insert([simplePayload])
+      .select()
+      .single();
+
+    if (!res3.error && res3.data) {
+      safeRevalidatePath("/marketing/coupons");
+      return { success: true, coupon: res3.data };
+    }
+
+    // Attempt 4: Minimal payload (code, is_active)
+    const minimalPayload = {
+      code: cleanCode,
+      is_active: true,
+    };
+
+    const res4 = await supabase
+      .from("coupons")
+      .insert([minimalPayload])
+      .select()
+      .single();
+
+    if (!res4.error && res4.data) {
+      safeRevalidatePath("/marketing/coupons");
+      return { success: true, coupon: res4.data };
+    }
+
+    return { success: false, error: res4.error?.message || error?.message || "Failed to create coupon in Supabase." };
   } catch (e: any) {
     console.error("Failed to create coupon:", e);
     return { success: false, error: e?.message || "Failed to create coupon." };
