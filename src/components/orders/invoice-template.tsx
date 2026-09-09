@@ -82,7 +82,6 @@ export function InvoiceTemplate({ order }: { order: any }) {
     "Main Road, Kakinada, Andhra Pradesh - 533001";
 
   const deliverySlot = order.delivery_slot || "15-Min Express Delivery";
-  const deliveryOtp = order.delivery_otp || (order.delivery_notes?.match(/(\d{4})/)?.[1]);
 
   return (
     <div className="bg-white text-gray-900 p-8 sm:p-12 max-w-4xl mx-auto font-sans print:p-6 print:m-0 print:shadow-none print:max-w-none shadow-2xl rounded-xl border border-gray-200">
@@ -158,15 +157,9 @@ export function InvoiceTemplate({ order }: { order: any }) {
                 <span className="text-gray-500">Order Status:</span>
                 <span className="font-bold text-green-700 uppercase">{order.status || "Completed"}</span>
               </div>
-              {deliveryOtp && (
-                <div className="flex justify-between items-center bg-green-100 text-green-900 px-2.5 py-1 rounded font-semibold text-xs border border-green-200">
-                  <span>Delivery OTP:</span>
-                  <span className="font-mono font-bold tracking-widest text-sm">{deliveryOtp}</span>
-                </div>
-              )}
             </div>
           </div>
-          {order.delivery_notes && (
+          {order.delivery_notes && !order.delivery_notes.toLowerCase().includes("delivery otp") && (
             <div className="mt-2 text-[11px] text-gray-600 bg-white p-2 rounded border">
               <span className="font-semibold text-gray-700">Notes: </span>{order.delivery_notes}
             </div>
