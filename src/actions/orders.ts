@@ -12,7 +12,7 @@ function isDummyPhone(phone?: string | null): boolean {
   return false;
 }
 
-export function formatOrderAddressData(order: any, fallbackAddress?: any) {
+function formatOrderAddressData(order: any, fallbackAddress?: any) {
   const addr = order.addresses || fallbackAddress || null;
 
   // Extract structured address parts
