@@ -208,20 +208,47 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
                   })}
                 </div>
                 
-                <div className="mt-6 pt-6 border-t space-y-3">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Subtotal</span>
-                    <span>₹{order.total_amount - 40}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Delivery Charge</span>
-                    <span>₹40.00</span>
-                  </div>
-                  <div className="flex justify-between text-lg font-bold">
-                    <span>Total</span>
-                    <span className="text-primary">₹{order.total_amount}</span>
-                  </div>
-                </div>
+                {(() => {
+                  const itemsSubtotal = Number(order.items_subtotal ?? (
+                    order.order_items?.reduce((sum: number, it: any) => sum + (Number(it.total_price) || 0), 0) ?? (order.total_amount - 10)
+                  ));
+                  const isFreeDelivery = order.is_free_delivery ?? (itemsSubtotal > 499 || Number(order.delivery_charge) === 0);
+                  const deliveryCharge = Number(order.delivery_charge ?? (isFreeDelivery ? 0 : 40));
+                  const handlingFee = Number(order.handling_fee ?? 10);
+                  const discountAmount = Number(order.discount_amount ?? 0);
+                  const finalTotal = Number(order.grand_total ?? order.total_amount ?? (itemsSubtotal + handlingFee + deliveryCharge - discountAmount));
+
+                  return (
+                    <div className="mt-6 pt-6 border-t space-y-3">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Items Subtotal</span>
+                        <span className="font-medium">₹{itemsSubtotal.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Handling Fee</span>
+                        <span className="font-medium">₹{handlingFee.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Delivery Charge</span>
+                        {isFreeDelivery ? (
+                          <span className="text-emerald-600 font-semibold">FREE (Order &gt; ₹499)</span>
+                        ) : (
+                          <span className="font-medium">₹{deliveryCharge.toFixed(2)}</span>
+                        )}
+                      </div>
+                      {discountAmount > 0 && (
+                        <div className="flex justify-between text-sm text-emerald-600 font-medium">
+                          <span>Coupon Discount</span>
+                          <span>-₹{discountAmount.toFixed(2)}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-lg font-bold border-t pt-3 mt-3">
+                        <span>Grand Total</span>
+                        <span className="text-primary font-black">₹{finalTotal.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
               </CardContent>
             </Card>
 

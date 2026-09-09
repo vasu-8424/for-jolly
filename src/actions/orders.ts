@@ -12,27 +12,28 @@ function isDummyPhone(phone?: string | null): boolean {
   return false;
 }
 
-function formatOrderAddressData(order: any, fallbackAddress?: any) {
+export function formatOrderAddressData(order: any, fallbackAddress?: any) {
   const addr = order.addresses || fallbackAddress || null;
 
   // Extract structured address parts
   const houseFlat = addr?.house_flat || addr?.flat || addr?.house_no || "";
   const streetArea = addr?.street_area || addr?.street || addr?.area || addr?.address_line1 || "";
   const landmark = addr?.landmark ? `Near ${addr.landmark}` : "";
-  const city = addr?.city || "";
-  const state = addr?.state || "";
-  const pincode = addr?.pincode || addr?.postal_code || "";
+  const city = addr?.city || "Kakinada";
+  const state = addr?.state || "Andhra Pradesh";
+  const pincode = addr?.pincode || addr?.postal_code || "533001";
 
   // Address Type Tag (e.g. Home, Work, Other)
   const isLabel = ["home", "work", "office", "other", "default", "my address"].includes((addr?.name || "").toLowerCase().trim());
   const addressType = addr?.address_type || addr?.type || (isLabel ? addr.name : "Home");
 
   // User Profile
-  const profileName = order.profiles?.full_name || order.profiles?.name || "";
-  const profilePhone = order.profiles?.phone_number || order.profiles?.phone || "";
+  const profileName = order.profiles?.full_name || order.profiles?.name || order.users?.full_name || "";
+  const profilePhone = order.profiles?.phone_number || order.profiles?.phone || order.users?.phone || "";
+  const profileEmail = order.profiles?.email || order.users?.email || "";
 
   // Recipient Name: Use profile name if address name is just a tag/label like "Home"
-  const recipientName = (!isLabel && addr?.name?.trim()) ? addr.name.trim() : (profileName || "Customer");
+  const recipientName = (!isLabel && addr?.name?.trim()) ? addr.name.trim() : (profileName || "Valued Customer");
 
   // Recipient Phone: prioritize valid verified profile phone over dummy/placeholder phones like 9999999999
   let recipientPhone = profilePhone;
@@ -58,15 +59,39 @@ function formatOrderAddressData(order: any, fallbackAddress?: any) {
 
   const formattedAddress = addressParts.length > 0 
     ? addressParts.join(", ") 
-    : (rawLocation || order.delivery_address || "No address provided");
+    : (rawLocation || order.delivery_address || "Main Road, Kakinada, Andhra Pradesh - 533001");
 
   // Google Maps URL
   let googleMapsUrl: string | null = null;
   if (latitude && longitude && Number(latitude) !== 0 && Number(longitude) !== 0) {
     googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
   } else if (formattedAddress && formattedAddress !== "No address provided") {
-    googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(formattedAddress)}`;
+    googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(formattedAddress.toLowerCase().includes("kakinada") ? formattedAddress : `${formattedAddress}, Kakinada, Andhra Pradesh`)}`;
   }
+
+  // Compute exact financial breakdown
+  const itemsList = Array.isArray(order.order_items) ? order.order_items : [];
+  const itemsSubtotal = itemsList.length > 0
+    ? itemsList.reduce((acc: number, it: any) => {
+        const itemTotal = Number(it.total_price) || ((Number(it.unit_price) || 0) * (Number(it.quantity) || 1));
+        return acc + itemTotal;
+      }, 0)
+    : Number(order.subtotal ?? order.grand_total ?? order.total_amount ?? 0);
+
+  // Free delivery threshold is > ₹499 (or if order.delivery_charge was recorded as 0)
+  const isFreeDelivery = itemsSubtotal > 499 || Number(order.delivery_charge) === 0;
+  const deliveryCharge = isFreeDelivery ? 0 : (Number(order.delivery_charge) > 0 ? Number(order.delivery_charge) : 40);
+  const handlingFee = 10.0;
+  const discountAmount = Number(order.discount_amount) || 0;
+  const taxAmount = Number(order.tax_amount) || 0;
+
+  // Stored grand total or calculated total
+  const storedTotal = Number(order.grand_total ?? order.total_amount ?? 0);
+  const calculatedTotal = itemsSubtotal + handlingFee + deliveryCharge - discountAmount;
+  const finalGrandTotal = storedTotal > 0 ? storedTotal : calculatedTotal;
+
+  // Invoice Number
+  const invoiceNumber = order.invoice_number || `INV-${order.id ? order.id.substring(0, 8).toUpperCase() : Date.now().toString().slice(-6)}`;
 
   return {
     ...order,
@@ -81,14 +106,23 @@ function formatOrderAddressData(order: any, fallbackAddress?: any) {
       pincode: pincode,
       recipient_name: recipientName,
       recipient_phone: recipientPhone,
+      recipient_email: profileEmail,
       full_address: formattedAddress,
       location_string: rawLocation || formattedAddress,
       latitude: latitude,
       longitude: longitude,
       google_maps_url: googleMapsUrl,
     },
-    total_amount: Number(order.grand_total ?? order.total_amount ?? 0),
-    grand_total: Number(order.grand_total ?? order.total_amount ?? 0),
+    invoice_number: invoiceNumber,
+    items_subtotal: itemsSubtotal,
+    delivery_charge: deliveryCharge,
+    is_free_delivery: isFreeDelivery,
+    handling_fee: handlingFee,
+    discount_amount: discountAmount,
+    tax_amount: taxAmount,
+    subtotal: itemsSubtotal,
+    total_amount: finalGrandTotal,
+    grand_total: finalGrandTotal,
   };
 }
 
@@ -100,7 +134,11 @@ export async function getOrders() {
       *,
       profiles:users!user_id (full_name, phone_number:phone, email),
       addresses:address_id (*),
-      delivery_agents:agent_id (id, name, phone, email, vehicle_type, vehicle_number, status)
+      delivery_agents:agent_id (id, name, phone, email, vehicle_type, vehicle_number, status),
+      order_items (
+        *,
+        product:product_id (name, sku, mrp, selling_price, brand, unit)
+      )
     `)
     .order("created_at", { ascending: false });
 
@@ -114,23 +152,58 @@ export async function getOrders() {
 
 export async function getOrderById(id: string) {
   const supabase = await createAdminClient();
-  const { data: order, error } = await supabase
-    .from("orders")
-    .select(`
-      *,
-      profiles:users!user_id (full_name, phone_number:phone, email),
-      addresses:address_id (*),
-      delivery_agents:agent_id (id, name, phone, email, vehicle_type, vehicle_number, status),
-      order_items (
-        *,
-        product:product_id (name, sku)
-      )
-    `)
-    .eq("id", id)
-    .single();
+  if (!id) return null;
 
-  if (error || !order) {
-    console.error("Error fetching order:", error);
+  const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(id);
+
+  let order: any = null;
+
+  if (isUuid) {
+    const { data, error } = await supabase
+      .from("orders")
+      .select(`
+        *,
+        profiles:users!user_id (full_name, phone_number:phone, email),
+        addresses:address_id (*),
+        delivery_agents:agent_id (id, name, phone, email, vehicle_type, vehicle_number, status),
+        order_items (
+          *,
+          product:product_id (name, sku, mrp, selling_price, brand, unit)
+        )
+      `)
+      .eq("id", id)
+      .maybeSingle();
+
+    if (!error && data) {
+      order = data;
+    }
+  }
+
+  // Fallback by order_number or partial ID match
+  if (!order) {
+    const { data: byOrdNo } = await supabase
+      .from("orders")
+      .select(`
+        *,
+        profiles:users!user_id (full_name, phone_number:phone, email),
+        addresses:address_id (*),
+        delivery_agents:agent_id (id, name, phone, email, vehicle_type, vehicle_number, status),
+        order_items (
+          *,
+          product:product_id (name, sku, mrp, selling_price, brand, unit)
+        )
+      `)
+      .or(`order_number.eq.${id},invoice_number.eq.${id}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (byOrdNo) {
+      order = byOrdNo;
+    }
+  }
+
+  if (!order) {
+    console.error("Error fetching order by ID:", id);
     return null;
   }
 
@@ -167,6 +240,7 @@ export async function updateOrderStatus(id: string, status: string) {
 
   revalidatePath("/orders");
   revalidatePath(`/orders/${id}`);
+  revalidatePath(`/invoice/${id}`);
   return { success: true, data };
 }
 
@@ -174,16 +248,21 @@ export async function verifyAndDeliverOrder(id: string, otp: string) {
   const supabase = await createAdminClient();
   const { data: order, error: fetchErr } = await supabase
     .from("orders")
-    .select("delivery_otp, id")
+    .select("delivery_otp, id, delivery_notes")
     .eq("id", id)
     .single();
 
   if (fetchErr || !order) {
-    // If delivery_otp column does not exist or fetch fails, compare with fallback or complete
     return updateOrderStatus(id, "Delivered");
   }
 
-  const expectedOtp = order.delivery_otp?.toString()?.trim();
+  // Extract OTP from delivery_otp or delivery_notes
+  let expectedOtp = order.delivery_otp?.toString()?.trim();
+  if (!expectedOtp && order.delivery_notes) {
+    const match = order.delivery_notes.match(/(\d{4})/);
+    if (match) expectedOtp = match[1];
+  }
+
   if (expectedOtp && otp.trim() !== expectedOtp) {
     return { success: false, error: "Invalid Delivery OTP! Please check with customer." };
   }
@@ -201,5 +280,6 @@ export async function verifyAndDeliverOrder(id: string, otp: string) {
 
   revalidatePath("/orders");
   revalidatePath(`/orders/${id}`);
+  revalidatePath(`/invoice/${id}`);
   return { success: true, data };
 }

@@ -72,7 +72,7 @@ export default function PrivacyPolicyPage() {
         <div className="mt-3 p-4 bg-slate-100 rounded-lg text-slate-800">
           <p><strong>Kakinada Fresh Support</strong></p>
           <p>Email: <a href="mailto:kakinadafresh@gmail.com" className="text-emerald-700 underline">kakinadafresh@gmail.com</a></p>
-          <p>Phone: +91 7989948996</p>
+          <p>Phone: +91 9030982289</p>
         </div>
       </section>
 
