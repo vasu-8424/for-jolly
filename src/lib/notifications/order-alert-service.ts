@@ -490,7 +490,22 @@ Store Helpline: 9030982289`;
   const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER || "kakinadafresh@gmail.com";
   const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASSWORD;
 
-  const agentEmail = payload.agent_email?.trim();
+  let agentEmail = payload.agent_email?.trim() || "";
+  if (!agentEmail && cleanAgentPhone) {
+    try {
+      const supabase = await createAdminClient();
+      const { data: matchedUser } = await supabase
+        .from("users")
+        .select("email")
+        .or(`phone.eq.${cleanAgentPhone},phone.eq.+91${cleanAgentPhone},phone.eq.91${cleanAgentPhone}`)
+        .limit(1)
+        .maybeSingle();
+      if (matchedUser?.email && matchedUser.email.includes("@") && !matchedUser.email.includes("example.com")) {
+        agentEmail = matchedUser.email.trim();
+      }
+    } catch (_) {}
+  }
+
   const recipientEmails = [agentEmail, ownerEmail, smtpUser].filter(Boolean).join(", ");
 
   if (smtpPass) {
