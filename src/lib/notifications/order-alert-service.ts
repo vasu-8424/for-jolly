@@ -326,3 +326,245 @@ Store Owner Phone: ${ownerPhone}`;
     errors,
   };
 }
+
+export interface AgentAssignmentAlertPayload {
+  order_id: string;
+  order_number: string;
+  agent_name: string;
+  agent_phone: string;
+  customer_name: string;
+  customer_phone: string;
+  total_amount: number | string;
+  payment_method?: string;
+  payment_status?: string;
+  delivery_address: string;
+  location_string?: string;
+  landmark?: string;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
+  google_maps_url?: string;
+  delivery_otp?: string;
+  delivery_notes?: string;
+  delivery_slot?: string;
+  items?: Array<{
+    title?: string;
+    name?: string;
+    quantity?: number;
+    price?: number;
+    total_price?: number;
+    selected_prep_option?: { name: string } | null;
+    selected_extras?: Array<{ name: string } | string> | null;
+  }>;
+}
+
+export interface AgentDispatchResult {
+  sms_sent: boolean;
+  whatsapp_sent: boolean;
+  supabase_notification: boolean;
+  agent_phone: string;
+  google_maps_url: string;
+  whatsapp_chat_url: string;
+  message_text: string;
+  summary: string;
+  errors: string[];
+}
+
+export async function dispatchAgentAssignmentAlert(
+  payload: AgentAssignmentAlertPayload
+): Promise<AgentDispatchResult> {
+  const errors: string[] = [];
+  const cleanAgentPhone = (payload.agent_phone || "").replace(/\D/g, "").slice(-10);
+
+  // 1. Format clean address & Google Maps navigation link
+  const rawAddress = (payload.delivery_address || "").trim() || "Kakinada, Andhra Pradesh";
+  const locationStr = (payload.location_string || "").trim();
+  const landmark = (payload.landmark || "").trim();
+
+  let mapsUrl = payload.google_maps_url;
+  if (!mapsUrl) {
+    if (
+      payload.latitude &&
+      payload.longitude &&
+      Number(payload.latitude) !== 0 &&
+      Number(payload.longitude) !== 0
+    ) {
+      mapsUrl = `https://www.google.com/maps/search/?api=1&query=${payload.latitude},${payload.longitude}`;
+    } else {
+      const searchAddress = rawAddress.toLowerCase().includes("kakinada")
+        ? rawAddress
+        : `${rawAddress}, Kakinada, Andhra Pradesh`;
+      mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(searchAddress)}`;
+    }
+  }
+
+  // 2. Format Items text with Cuts & Extras
+  const itemsText =
+    Array.isArray(payload.items) && payload.items.length > 0
+      ? payload.items
+          .map((i) => {
+            const prep = i.selected_prep_option?.name ? ` [${i.selected_prep_option.name}]` : "";
+            const extras =
+              Array.isArray(i.selected_extras) && i.selected_extras.length > 0
+                ? ` (+${i.selected_extras.map((e) => (typeof e === "string" ? e : e?.name)).join(", ")})`
+                : "";
+            return `• ${i.title || i.name || "Item"} x ${i.quantity || 1}${prep}${extras}`;
+          })
+          .join("\n")
+      : "• Items in packed parcel";
+
+  // 3. Determine Payment Collection Instructions
+  const isPaid =
+    (payload.payment_status || "").toLowerCase() === "paid" ||
+    (payload.payment_method || "").toLowerCase().includes("online") ||
+    (payload.payment_method || "").toLowerCase().includes("upi") ||
+    (payload.payment_method || "").toLowerCase().includes("card") ||
+    (payload.payment_method || "").toLowerCase().includes("prepaid");
+
+  const amountNum = Number(payload.total_amount || 0).toFixed(2);
+  const paymentCollectionText = isPaid
+    ? `✅ PREPAID (ONLINE/UPI) - DO NOT COLLECT (₹${amountNum})`
+    : `💰 CASH ON DELIVERY (COD) - COLLECT ₹${amountNum} FROM CUSTOMER`;
+
+  // 4. Compose Plaintext Alert for Delivery Agent
+  const plainTextAlert = `🛵 NEW DELIVERY ASSIGNED!
+━━━━━━━━━━━━━━━━━━━━
+Order #: ${payload.order_number}
+Agent: ${payload.agent_name}
+
+💵 PAYMENT & COLLECTION:
+${paymentCollectionText}
+${payload.delivery_otp ? `🔑 Delivery OTP: ${payload.delivery_otp}\n` : ""}
+👤 CUSTOMER:
+Name: ${payload.customer_name || "Customer"}
+Phone: ${payload.customer_phone || "N/A"}
+
+📍 DELIVERY LOCATION:
+${rawAddress}${landmark ? `\nLandmark: Near ${landmark}` : ""}${locationStr && locationStr !== rawAddress ? `\nLocation Area: ${locationStr}` : ""}
+
+🗺️ GOOGLE MAPS NAVIGATION:
+${mapsUrl}
+${payload.delivery_notes ? `\n📝 Customer Note: ${payload.delivery_notes}` : ""}
+📦 ITEMS TO DELIVER:
+${itemsText}
+━━━━━━━━━━━━━━━━━━━━
+Store Helpline: 9030982289`;
+
+  // 5. Generate WhatsApp Direct Click-to-Chat URL for Agent
+  const whatsappChatUrl = `https://api.whatsapp.com/send?phone=91${cleanAgentPhone}&text=${encodeURIComponent(plainTextAlert)}`;
+
+  let supabaseNotificationSuccess = false;
+  let smsSuccess = false;
+  let whatsappSuccess = false;
+
+  // --- CHANNEL 1: Supabase Notification Database ---
+  try {
+    const supabase = await createAdminClient();
+    const { error: dbError } = await supabase.from("notifications").insert([
+      {
+        title: `🛵 Order #${payload.order_number} assigned to ${payload.agent_name}`,
+        message: plainTextAlert,
+        type: "AgentAssignment",
+        status: "Sent",
+        is_read: false,
+        deep_link: `/orders/${payload.order_id}`,
+        created_at: new Date().toISOString(),
+      },
+    ]);
+
+    if (!dbError) {
+      supabaseNotificationSuccess = true;
+    } else {
+      errors.push(`Supabase notification insert: ${dbError.message}`);
+    }
+  } catch (err: any) {
+    errors.push(`Supabase notification error: ${err?.message}`);
+  }
+
+  // --- CHANNEL 2: Fast2SMS SMS directly to Delivery Agent's Mobile Number ---
+  const fast2SmsKey = process.env.FAST2SMS_API_KEY;
+  if (fast2SmsKey && cleanAgentPhone.length === 10) {
+    try {
+      const smsText = `🛵 ASSIGNED Order #${payload.order_number}! Cust: ${payload.customer_name} (${payload.customer_phone}). ${isPaid ? "PAID ONLINE" : "Collect Rs." + Number(payload.total_amount).toFixed(0)}. Addr: ${rawAddress.slice(0, 40)}. Map: ${mapsUrl}`;
+      const f2sUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${encodeURIComponent(
+        fast2SmsKey
+      )}&route=q&message=${encodeURIComponent(smsText)}&language=english&flash=0&numbers=${cleanAgentPhone}`;
+
+      const f2sRes = await fetch(f2sUrl, { method: "GET" });
+      const f2sJson = await f2sRes.json();
+      if (f2sJson.return) {
+        smsSuccess = true;
+      } else {
+        errors.push(`Fast2SMS Agent API response: ${JSON.stringify(f2sJson)}`);
+      }
+    } catch (smsErr: any) {
+      errors.push(`Fast2SMS Agent error: ${smsErr?.message}`);
+    }
+  }
+
+  // --- CHANNEL 3: CallMeBot WhatsApp API to Agent ---
+  const callMeBotKey = process.env.CALLMEBOT_API_KEY;
+  if (callMeBotKey && cleanAgentPhone.length === 10) {
+    try {
+      const internationalPhone = `+91${cleanAgentPhone}`;
+      const cmbUrl = `https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(
+        internationalPhone
+      )}&text=${encodeURIComponent(plainTextAlert)}&apikey=${encodeURIComponent(callMeBotKey)}`;
+
+      const cmbRes = await fetch(cmbUrl, { method: "GET" });
+      if (cmbRes.ok) {
+        whatsappSuccess = true;
+      } else {
+        errors.push(`CallMeBot Agent WhatsApp HTTP ${cmbRes.status}`);
+      }
+    } catch (cmbErr: any) {
+      errors.push(`CallMeBot Agent error: ${cmbErr?.message}`);
+    }
+  }
+
+  // --- CHANNEL 4: Twilio SMS / WhatsApp to Agent ---
+  const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+  const twilioAuth = process.env.TWILIO_AUTH_TOKEN;
+  const twilioFrom = process.env.TWILIO_PHONE_NUMBER;
+
+  if (twilioSid && twilioAuth && twilioFrom && cleanAgentPhone.length === 10) {
+    try {
+      const twilioTo = `+91${cleanAgentPhone}`;
+      const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`;
+      const basicAuth = Buffer.from(`${twilioSid}:${twilioAuth}`).toString("base64");
+
+      const twilioRes = await fetch(twilioUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${basicAuth}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          From: twilioFrom,
+          To: twilioTo,
+          Body: plainTextAlert,
+        }).toString(),
+      });
+
+      if (twilioRes.ok) {
+        smsSuccess = true;
+      } else {
+        const twErr = await twilioRes.text();
+        errors.push(`Twilio Agent error: ${twErr}`);
+      }
+    } catch (twErr: any) {
+      errors.push(`Twilio Agent error: ${twErr?.message}`);
+    }
+  }
+
+  return {
+    sms_sent: smsSuccess,
+    whatsapp_sent: whatsappSuccess,
+    supabase_notification: supabaseNotificationSuccess,
+    agent_phone: cleanAgentPhone,
+    google_maps_url: mapsUrl,
+    whatsapp_chat_url: whatsappChatUrl,
+    message_text: plainTextAlert,
+    summary: `Order #${payload.order_number} details & navigation dispatched to agent ${payload.agent_name} (${cleanAgentPhone})`,
+    errors,
+  };
+}

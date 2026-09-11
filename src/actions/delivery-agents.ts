@@ -2,6 +2,8 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
+import { getOrderById } from "@/actions/orders";
+import { dispatchAgentAssignmentAlert } from "@/lib/notifications/order-alert-service";
 
 export interface DeliveryAgent {
   id: string;
@@ -254,7 +256,7 @@ export async function assignAgentToOrder(orderId: string, agentId: string) {
   // Fetch agent details for descriptive messages
   const { data: agent } = await supabase
     .from("delivery_agents")
-    .select("name, phone, status")
+    .select("id, name, phone, status, vehicle_type, vehicle_number")
     .eq("id", agentId)
     .single();
 
@@ -289,11 +291,69 @@ export async function assignAgentToOrder(orderId: string, agentId: string) {
     throw new Error(error.message || "Failed to assign delivery agent to order.");
   }
 
+  // Automatically dispatch complete order & navigation details to the assigned delivery agent
+  let dispatchResult = null;
+  try {
+    const orderData = await getOrderById(orderId);
+    if (orderData && agent && agent.phone) {
+      const recipientName =
+        orderData.delivery_address_details?.recipient_name ||
+        orderData.profiles?.full_name ||
+        "Valued Customer";
+      const recipientPhone =
+        orderData.delivery_address_details?.recipient_phone ||
+        orderData.profiles?.phone_number ||
+        "";
+      const deliveryAddress =
+        orderData.delivery_address ||
+        orderData.delivery_address_details?.full_address ||
+        "Kakinada, Andhra Pradesh";
+      const locationString =
+        orderData.delivery_address_details?.location_string ||
+        deliveryAddress;
+      const landmark = orderData.delivery_address_details?.landmark || "";
+
+      const items = (orderData.order_items || []).map((it: any) => ({
+        title: it.product_name || it.product?.name || "Item",
+        name: it.product_name || it.product?.name || "Item",
+        quantity: it.quantity || 1,
+        price: it.unit_price,
+        total_price: it.total_price,
+        selected_prep_option: it.selected_prep_option,
+        selected_extras: it.selected_extras,
+      }));
+
+      dispatchResult = await dispatchAgentAssignmentAlert({
+        order_id: orderData.id,
+        order_number: orderData.order_number || orderData.id.substring(0, 8).toUpperCase(),
+        agent_name: agent.name,
+        agent_phone: agent.phone,
+        customer_name: recipientName,
+        customer_phone: recipientPhone,
+        total_amount: orderData.grand_total || orderData.total_amount || 0,
+        payment_method: orderData.payment_method || "Cash on Delivery",
+        payment_status: orderData.payment_status || "Pending",
+        delivery_address: deliveryAddress,
+        location_string: locationString,
+        landmark: landmark,
+        latitude: orderData.delivery_address_details?.latitude,
+        longitude: orderData.delivery_address_details?.longitude,
+        google_maps_url: orderData.delivery_address_details?.google_maps_url,
+        delivery_otp: orderData.delivery_otp,
+        delivery_notes: orderData.delivery_notes,
+        delivery_slot: orderData.delivery_slot,
+        items: items,
+      });
+    }
+  } catch (alertErr: any) {
+    console.error("Warning: Failed to dispatch agent notification:", alertErr);
+  }
+
   revalidatePath("/delivery-agents");
   revalidatePath("/admin/delivery-agents");
   revalidatePath("/orders");
   revalidatePath(`/orders/${orderId}`);
-  return { success: true };
+  return { success: true, agent, dispatchResult };
 }
 
 export async function unassignAgentFromOrder(orderId: string) {
@@ -313,4 +373,79 @@ export async function unassignAgentFromOrder(orderId: string) {
   revalidatePath("/orders");
   revalidatePath(`/orders/${orderId}`);
   return { success: true };
+}
+
+export async function sendAgentOrderAlert(orderId: string, agentId?: string) {
+  const supabase = await createAdminClient();
+  const orderData = await getOrderById(orderId);
+
+  if (!orderData) {
+    throw new Error("Order not found");
+  }
+
+  const targetAgentId = agentId || orderData.agent_id || orderData.delivery_agents?.id;
+  if (!targetAgentId) {
+    throw new Error("No delivery agent assigned to this order yet.");
+  }
+
+  const { data: agent, error: agentErr } = await supabase
+    .from("delivery_agents")
+    .select("id, name, phone, status, vehicle_type, vehicle_number")
+    .eq("id", targetAgentId)
+    .single();
+
+  if (agentErr || !agent || !agent.phone) {
+    throw new Error("Could not find agent contact number.");
+  }
+
+  const recipientName =
+    orderData.delivery_address_details?.recipient_name ||
+    orderData.profiles?.full_name ||
+    "Valued Customer";
+  const recipientPhone =
+    orderData.delivery_address_details?.recipient_phone ||
+    orderData.profiles?.phone_number ||
+    "";
+  const deliveryAddress =
+    orderData.delivery_address ||
+    orderData.delivery_address_details?.full_address ||
+    "Kakinada, Andhra Pradesh";
+  const locationString =
+    orderData.delivery_address_details?.location_string ||
+    deliveryAddress;
+  const landmark = orderData.delivery_address_details?.landmark || "";
+
+  const items = (orderData.order_items || []).map((it: any) => ({
+    title: it.product_name || it.product?.name || "Item",
+    name: it.product_name || it.product?.name || "Item",
+    quantity: it.quantity || 1,
+    price: it.unit_price,
+    total_price: it.total_price,
+    selected_prep_option: it.selected_prep_option,
+    selected_extras: it.selected_extras,
+  }));
+
+  const dispatchResult = await dispatchAgentAssignmentAlert({
+    order_id: orderData.id,
+    order_number: orderData.order_number || orderData.id.substring(0, 8).toUpperCase(),
+    agent_name: agent.name,
+    agent_phone: agent.phone,
+    customer_name: recipientName,
+    customer_phone: recipientPhone,
+    total_amount: orderData.grand_total || orderData.total_amount || 0,
+    payment_method: orderData.payment_method || "Cash on Delivery",
+    payment_status: orderData.payment_status || "Pending",
+    delivery_address: deliveryAddress,
+    location_string: locationString,
+    landmark: landmark,
+    latitude: orderData.delivery_address_details?.latitude,
+    longitude: orderData.delivery_address_details?.longitude,
+    google_maps_url: orderData.delivery_address_details?.google_maps_url,
+    delivery_otp: orderData.delivery_otp,
+    delivery_notes: orderData.delivery_notes,
+    delivery_slot: orderData.delivery_slot,
+    items: items,
+  });
+
+  return { success: true, agent, dispatchResult };
 }

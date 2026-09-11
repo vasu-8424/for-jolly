@@ -1,11 +1,33 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bike, Phone, User, CheckCircle2, Clock, AlertTriangle, UserCheck, X, RefreshCw, Copy, Check } from "lucide-react";
+import {
+  Bike,
+  Phone,
+  User,
+  CheckCircle2,
+  Clock,
+  AlertTriangle,
+  UserCheck,
+  X,
+  RefreshCw,
+  Copy,
+  Check,
+  Send,
+  Navigation,
+  MessageSquare,
+  Share2,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { getDeliveryAgents, assignAgentToOrder, unassignAgentFromOrder, DeliveryAgent } from "@/actions/delivery-agents";
+import {
+  getDeliveryAgents,
+  assignAgentToOrder,
+  unassignAgentFromOrder,
+  sendAgentOrderAlert,
+  DeliveryAgent,
+} from "@/actions/delivery-agents";
 import toast from "react-hot-toast";
 
 interface AgentAssignmentCardProps {
@@ -19,6 +41,7 @@ export function AgentAssignmentCard({ order, onAssigned }: AgentAssignmentCardPr
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
   const [isAssigning, setIsAssigning] = useState(false);
   const [isUnassigning, setIsUnassigning] = useState(false);
+  const [isResending, setIsResending] = useState(false);
   const [isChanging, setIsChanging] = useState(false);
   const [copiedPhone, setCopiedPhone] = useState(false);
 
@@ -48,10 +71,16 @@ export function AgentAssignmentCard({ order, onAssigned }: AgentAssignmentCardPr
       return;
     }
 
+    const targetAgent = agents.find((a) => a.id === targetAgentId);
+
     setIsAssigning(true);
     try {
-      await assignAgentToOrder(order.id, targetAgentId);
-      toast.success("Delivery agent assigned successfully!");
+      const result = await assignAgentToOrder(order.id, targetAgentId);
+      const agentPhone = targetAgent?.phone || result.agent?.phone || "";
+      toast.success(
+        `Agent ${targetAgent?.name || "assigned"}! Order details & location sent to ${agentPhone}.`,
+        { duration: 5000 }
+      );
       setIsChanging(false);
       setSelectedAgentId("");
       await loadAgents();
@@ -83,6 +112,19 @@ export function AgentAssignmentCard({ order, onAssigned }: AgentAssignmentCardPr
     }
   };
 
+  const handleResendAlert = async () => {
+    if (!assignedAgent?.id) return;
+    setIsResending(true);
+    try {
+      const res = await sendAgentOrderAlert(order.id, assignedAgent.id);
+      toast.success(`Order details & Google Maps route resent to ${res.agent.name} (${res.agent.phone})!`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to send alert to agent.");
+    } finally {
+      setIsResending(false);
+    }
+  };
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedPhone(true);
@@ -103,6 +145,89 @@ export function AgentAssignmentCard({ order, onAssigned }: AgentAssignmentCardPr
     }
   };
 
+  const buildAgentWhatsAppUrl = () => {
+    if (!assignedAgent) return "#";
+    const cleanPhone = (assignedAgent.phone || "").replace(/\D/g, "").slice(-10);
+    const recipientName =
+      order?.delivery_address_details?.recipient_name ||
+      order?.profiles?.full_name ||
+      "Valued Customer";
+    const recipientPhone =
+      order?.delivery_address_details?.recipient_phone ||
+      order?.profiles?.phone_number ||
+      "N/A";
+    const rawAddress =
+      order?.delivery_address ||
+      order?.delivery_address_details?.full_address ||
+      "Kakinada, Andhra Pradesh";
+    const landmark = order?.delivery_address_details?.landmark;
+    const locationStr = order?.delivery_address_details?.location_string;
+    const mapsUrl =
+      order?.delivery_address_details?.google_maps_url ||
+      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+        rawAddress.toLowerCase().includes("kakinada")
+          ? rawAddress
+          : `${rawAddress}, Kakinada, Andhra Pradesh`
+      )}`;
+
+    const isPaid =
+      (order?.payment_status || "").toLowerCase() === "paid" ||
+      (order?.payment_method || "").toLowerCase().includes("online") ||
+      (order?.payment_method || "").toLowerCase().includes("upi") ||
+      (order?.payment_method || "").toLowerCase().includes("card") ||
+      (order?.payment_method || "").toLowerCase().includes("prepaid");
+
+    const amt = Number(order?.grand_total ?? order?.total_amount ?? 0).toFixed(2);
+    const payMsg = isPaid
+      ? `✅ PREPAID (ONLINE/UPI) - DO NOT COLLECT (₹${amt})`
+      : `💰 CASH ON DELIVERY (COD) - COLLECT ₹${amt} FROM CUSTOMER`;
+
+    const itemsText =
+      Array.isArray(order?.order_items) && order.order_items.length > 0
+        ? order.order_items
+            .map((it: any) => {
+              const prep = it.selected_prep_option?.name ? ` [${it.selected_prep_option.name}]` : "";
+              return `• ${it.product_name || it.product?.name || "Item"} x ${it.quantity || 1}${prep}`;
+            })
+            .join("\n")
+        : "• Items in packed parcel";
+
+    const text = `🛵 NEW DELIVERY ASSIGNED!
+━━━━━━━━━━━━━━━━━━━━
+Order #: ${order?.order_number || (order?.id ? order.id.substring(0, 8).toUpperCase() : "N/A")}
+Agent: ${assignedAgent.name}
+
+💵 PAYMENT & COLLECTION:
+${payMsg}
+${order?.delivery_otp ? `🔑 Delivery OTP: ${order.delivery_otp}\n` : ""}
+👤 CUSTOMER:
+Name: ${recipientName}
+Phone: ${recipientPhone}
+
+📍 DELIVERY LOCATION:
+${rawAddress}${landmark ? `\nLandmark: Near ${landmark}` : ""}${locationStr && locationStr !== rawAddress ? `\nLocation Area: ${locationStr}` : ""}
+
+🗺️ GOOGLE MAPS NAVIGATION:
+${mapsUrl}
+${order?.delivery_notes ? `\n📝 Customer Note: ${order.delivery_notes}` : ""}
+📦 ITEMS TO DELIVER:
+${itemsText}
+━━━━━━━━━━━━━━━━━━━━
+Store Helpline: 9030982289`;
+
+    return `https://api.whatsapp.com/send?phone=91${cleanPhone}&text=${encodeURIComponent(text)}`;
+  };
+
+  const agentMapsUrl =
+    order?.delivery_address_details?.google_maps_url ||
+    (order?.delivery_address
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+          order.delivery_address.toLowerCase().includes("kakinada")
+            ? order.delivery_address
+            : `${order.delivery_address}, Kakinada, Andhra Pradesh`
+        )}`
+      : null);
+
   return (
     <Card className="border-border shadow-sm bg-card/80 backdrop-blur-xl">
       <CardHeader className="pb-3">
@@ -114,7 +239,7 @@ export function AgentAssignmentCard({ order, onAssigned }: AgentAssignmentCardPr
             <div>
               <CardTitle className="text-base font-semibold">Delivery Assignment</CardTitle>
               <CardDescription className="text-xs">
-                {assignedAgent ? "Assigned agent details" : "Assign a fleet driver to this order"}
+                {assignedAgent ? "Assigned driver & direct dispatch" : "Assign a fleet driver to this order"}
               </CardDescription>
             </div>
           </div>
@@ -164,9 +289,9 @@ export function AgentAssignmentCard({ order, onAssigned }: AgentAssignmentCardPr
                   <Phone className="w-3.5 h-3.5 text-muted-foreground" />
                   <a
                     href={`tel:${assignedAgent.phone}`}
-                    className="font-medium text-primary hover:underline"
+                    className="font-medium text-primary hover:underline font-mono"
                   >
-                    {assignedAgent.phone}
+                    +91 {assignedAgent.phone}
                   </a>
                 </div>
                 <Button
@@ -181,8 +306,47 @@ export function AgentAssignmentCard({ order, onAssigned }: AgentAssignmentCardPr
               </div>
             </div>
 
+            {/* Direct Instant Action Buttons for Delivery Agent */}
+            <div className="space-y-2">
+              <Button
+                asChild
+                className="w-full text-xs font-semibold gap-2 bg-[#25D366] hover:bg-[#20bd5a] text-white shadow-sm border-0 h-9"
+              >
+                <a href={buildAgentWhatsAppUrl()} target="_blank" rel="noopener noreferrer">
+                  <MessageSquare className="w-4 h-4 fill-current" />
+                  💬 WhatsApp Order & Maps to Agent
+                </a>
+              </Button>
+
+              <div className="flex items-center gap-2">
+                {agentMapsUrl && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    asChild
+                    className="flex-1 text-xs h-8 gap-1.5 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
+                  >
+                    <a href={agentMapsUrl} target="_blank" rel="noopener noreferrer">
+                      <Navigation className="w-3.5 h-3.5" /> Navigation Link
+                    </a>
+                  </Button>
+                )}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleResendAlert}
+                  disabled={isResending}
+                  className="flex-1 text-xs h-8 gap-1.5 border-border shadow-xs"
+                >
+                  <Send className={`w-3.5 h-3.5 ${isResending ? "animate-spin" : ""}`} />
+                  {isResending ? "Sending..." : "Resend SMS Alert"}
+                </Button>
+              </div>
+            </div>
+
             {!isOrderTerminal && (
-              <div className="flex items-center gap-2 pt-1">
+              <div className="flex items-center gap-2 pt-1 border-t border-border/40">
                 <Button
                   variant="outline"
                   size="sm"
@@ -280,7 +444,7 @@ export function AgentAssignmentCard({ order, onAssigned }: AgentAssignmentCardPr
                   </select>
 
                   <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    💡 <span className="font-medium">Safety Rule:</span> Agents currently on an active order cannot take new assignments until their delivery is completed.
+                    💡 <span className="font-medium">Direct Auto-Dispatch:</span> When you assign an agent, the full customer address, location string, Google Maps link, payment mode, and order details are automatically dispatched directly to the agent's phone number.
                   </p>
                 </div>
               )}
@@ -293,7 +457,7 @@ export function AgentAssignmentCard({ order, onAssigned }: AgentAssignmentCardPr
                 className="w-full text-xs h-9 font-medium gap-1.5 mt-2 bg-primary text-primary-foreground hover:bg-primary/90"
               >
                 <UserCheck className="w-4 h-4" />
-                {isAssigning ? "Assigning..." : isChanging ? "Confirm Reassignment" : "Assign to Order"}
+                {isAssigning ? "Assigning & Dispatching..." : isChanging ? "Confirm & Dispatch to Agent" : "Assign & Dispatch to Agent"}
               </Button>
             )}
           </div>
@@ -302,3 +466,4 @@ export function AgentAssignmentCard({ order, onAssigned }: AgentAssignmentCardPr
     </Card>
   );
 }
+
