@@ -332,6 +332,7 @@ export interface AgentAssignmentAlertPayload {
   order_number: string;
   agent_name: string;
   agent_phone: string;
+  agent_email?: string | null;
   customer_name: string;
   customer_phone: string;
   total_amount: number | string;
@@ -358,6 +359,8 @@ export interface AgentAssignmentAlertPayload {
 }
 
 export interface AgentDispatchResult {
+  email_sent: boolean;
+  fcm_sent: boolean;
   sms_sent: boolean;
   whatsapp_sent: boolean;
   supabase_notification: boolean;
@@ -374,6 +377,7 @@ export async function dispatchAgentAssignmentAlert(
 ): Promise<AgentDispatchResult> {
   const errors: string[] = [];
   const cleanAgentPhone = (payload.agent_phone || "").replace(/\D/g, "").slice(-10);
+  const ownerEmail = process.env.OWNER_EMAIL || "kakinadafresh@gmail.com";
 
   // 1. Format clean address & Google Maps navigation link
   const rawAddress = (payload.delivery_address || "").trim() || "Kakinada, Andhra Pradesh";
@@ -453,6 +457,8 @@ Store Helpline: 9030982289`;
   const whatsappChatUrl = `https://api.whatsapp.com/send?phone=91${cleanAgentPhone}&text=${encodeURIComponent(plainTextAlert)}`;
 
   let supabaseNotificationSuccess = false;
+  let emailSuccess = false;
+  let fcmSuccess = false;
   let smsSuccess = false;
   let whatsappSuccess = false;
 
@@ -480,7 +486,167 @@ Store Helpline: 9030982289`;
     errors.push(`Supabase notification error: ${err?.message}`);
   }
 
-  // --- CHANNEL 2: Fast2SMS SMS directly to Delivery Agent's Mobile Number ---
+  // --- CHANNEL 2: Direct Email via Nodemailer (Gmail App Password) ---
+  const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER || "kakinadafresh@gmail.com";
+  const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASSWORD;
+
+  const agentEmail = payload.agent_email?.trim();
+  const recipientEmails = [agentEmail, ownerEmail, smtpUser].filter(Boolean).join(", ");
+
+  if (smtpPass) {
+    try {
+      const transporter = nodemailer.createTransport({
+        service: process.env.SMTP_SERVICE || (smtpUser.includes("@gmail.com") ? "gmail" : undefined),
+        host: process.env.SMTP_HOST || (smtpUser.includes("@gmail.com") ? "smtp.gmail.com" : undefined),
+        port: Number(process.env.SMTP_PORT) || 465,
+        secure: process.env.SMTP_SECURE !== "false",
+        auth: {
+          user: smtpUser,
+          pass: smtpPass,
+        },
+      });
+
+      const htmlContent = `
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+          <div style="background: linear-gradient(135deg, #0284c7, #0369a1); color: #ffffff; padding: 24px; text-align: center;">
+            <h1 style="margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">🛵 NEW DELIVERY ASSIGNED!</h1>
+            <p style="margin: 6px 0 0 0; font-size: 14px; opacity: 0.9;">Order #${payload.order_number} • Driver: ${payload.agent_name}</p>
+          </div>
+          
+          <div style="padding: 24px;">
+            <div style="background-color: #f0fdf4; border-radius: 8px; padding: 16px; margin-bottom: 20px; border-left: 4px solid #16a34a;">
+              <h3 style="margin: 0 0 8px 0; font-size: 15px; color: #166534;">💵 Payment & Collection:</h3>
+              <p style="margin: 0; font-size: 15px; font-weight: 800; color: #15803d;">${paymentCollectionText}</p>
+              ${payload.delivery_otp ? `<p style="margin: 6px 0 0 0; font-size: 13px; color: #166534;">Delivery OTP: <strong>${payload.delivery_otp}</strong></p>` : ""}
+            </div>
+
+            <div style="background-color: #f8fafc; border-radius: 8px; padding: 16px; margin-bottom: 20px; border-left: 4px solid #0284c7;">
+              <h3 style="margin: 0 0 8px 0; font-size: 15px; color: #0f172a;">📍 Customer Delivery Location</h3>
+              <p style="margin: 0 0 4px 0; font-size: 14px; color: #334155; line-height: 1.5;">${rawAddress}</p>
+              ${landmark ? `<p style="margin: 0 0 4px 0; font-size: 12px; color: #64748b;">Landmark: Near ${landmark}</p>` : ""}
+              ${locationStr && locationStr !== rawAddress ? `<p style="margin: 0 0 12px 0; font-size: 12px; color: #64748b;">Area: ${locationStr}</p>` : ""}
+              
+              <div style="margin-top: 12px;">
+                <a href="${mapsUrl}" target="_blank" style="display: inline-block; background-color: #2563eb; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 13px; padding: 10px 18px; border-radius: 6px;">
+                  🗺️ Open in Google Maps Navigation
+                </a>
+              </div>
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px;">
+              <tr>
+                <td style="padding: 8px 0; color: #64748b; font-weight: 500;">Customer Name:</td>
+                <td style="padding: 8px 0; color: #0f172a; font-weight: 700; text-align: right;">${payload.customer_name || "Customer"}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #64748b; font-weight: 500;">Customer Phone:</td>
+                <td style="padding: 8px 0; color: #0f172a; font-weight: 700; text-align: right;">
+                  <a href="tel:${payload.customer_phone}" style="color: #0284c7; text-decoration: none; font-weight: bold;">${payload.customer_phone || "N/A"}</a>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #64748b; font-weight: 500;">Delivery Agent Phone:</td>
+                <td style="padding: 8px 0; color: #0f172a; font-weight: 700; text-align: right;">+91 ${cleanAgentPhone}</td>
+              </tr>
+              ${payload.delivery_notes ? `
+              <tr>
+                <td style="padding: 8px 0; color: #64748b; font-weight: 500;">Customer Notes:</td>
+                <td style="padding: 8px 0; color: #d97706; font-weight: 600; text-align: right;">${payload.delivery_notes}</td>
+              </tr>` : ""}
+            </table>
+
+            <div style="background-color: #f1f5f9; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+              <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #334155;">📦 Items to Deliver:</h4>
+              <pre style="margin: 0; font-family: inherit; font-size: 13px; color: #1e293b; white-space: pre-wrap; line-height: 1.6;">${itemsText}</pre>
+            </div>
+
+            <div style="text-align: center; margin-top: 24px;">
+              <a href="${whatsappChatUrl}" target="_blank" style="display: inline-block; background-color: #22c55e; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 14px; padding: 12px 24px; border-radius: 8px;">
+                💬 Open Agent WhatsApp Chat
+              </a>
+            </div>
+          </div>
+          
+          <div style="background-color: #f8fafc; padding: 12px; text-align: center; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8;">
+            Kakinada Fresh Fleet Dispatch • Store Contact: 9030982289
+          </div>
+        </div>
+      `;
+
+      await transporter.sendMail({
+        from: `"Kakinada Fresh Fleet" <${smtpUser}>`,
+        to: recipientEmails,
+        subject: `🛵 DELIVERY ASSIGNED #${payload.order_number} - Driver: ${payload.agent_name} (+91 ${cleanAgentPhone})`,
+        text: plainTextAlert,
+        html: htmlContent,
+      });
+
+      emailSuccess = true;
+    } catch (mailErr: any) {
+      errors.push(`Nodemailer agent email error: ${mailErr?.message}`);
+    }
+  }
+
+  // --- CHANNEL 3: Firebase Cloud Messaging (FCM Push Notification to Agent App) ---
+  try {
+    const supabase = await createAdminClient();
+    // Look up agent's registered FCM tokens by matching phone or user_id
+    const { data: matchedUsers } = await supabase
+      .from("users")
+      .select("id, phone")
+      .or(`phone.eq.${cleanAgentPhone},phone.eq.+91${cleanAgentPhone}`);
+
+    const userIds = (matchedUsers || []).map((u: any) => u.id).filter(Boolean);
+
+    let tokenList: string[] = [];
+    if (userIds.length > 0) {
+      const { data: userTokens } = await supabase
+        .from("device_tokens")
+        .select("fcm_token")
+        .in("user_id", userIds);
+
+      if (userTokens && userTokens.length > 0) {
+        tokenList = userTokens.map((t: any) => t.fcm_token).filter(Boolean);
+      }
+    }
+
+    // If no user-specific token found, fetch active tokens
+    if (tokenList.length === 0) {
+      const { data: activeTokens } = await supabase
+        .from("device_tokens")
+        .select("fcm_token")
+        .order("updated_at", { ascending: false })
+        .limit(5);
+
+      if (activeTokens) {
+        tokenList = activeTokens.map((t: any) => t.fcm_token).filter(Boolean);
+      }
+    }
+
+    if (tokenList.length > 0) {
+      const { dispatchPushNotification } = await import("@/lib/firebase/fcm-dispatcher");
+      const fcmRes = await dispatchPushNotification(
+        {
+          title: `🛵 Order #${payload.order_number} Assigned!`,
+          body: `Deliver to ${payload.customer_name}. ${paymentCollectionText}. Tap for navigation.`,
+          deepLink: `/orders/${payload.order_id}`,
+          data: {
+            order_id: payload.order_id,
+            google_maps_url: mapsUrl,
+            customer_phone: payload.customer_phone,
+          },
+        },
+        tokenList
+      );
+      if (fcmRes.success) {
+        fcmSuccess = true;
+      }
+    }
+  } catch (fcmErr: any) {
+    errors.push(`FCM push error: ${fcmErr?.message}`);
+  }
+
+  // --- CHANNEL 4: Fast2SMS SMS directly to Delivery Agent's Mobile Number ---
   const fast2SmsKey = process.env.FAST2SMS_API_KEY;
   if (fast2SmsKey && cleanAgentPhone.length === 10) {
     try {
@@ -501,7 +667,7 @@ Store Helpline: 9030982289`;
     }
   }
 
-  // --- CHANNEL 3: CallMeBot WhatsApp API to Agent ---
+  // --- CHANNEL 5: CallMeBot WhatsApp API to Agent ---
   const callMeBotKey = process.env.CALLMEBOT_API_KEY;
   if (callMeBotKey && cleanAgentPhone.length === 10) {
     try {
@@ -521,7 +687,7 @@ Store Helpline: 9030982289`;
     }
   }
 
-  // --- CHANNEL 4: Twilio SMS / WhatsApp to Agent ---
+  // --- CHANNEL 6: Twilio SMS / WhatsApp to Agent ---
   const twilioSid = process.env.TWILIO_ACCOUNT_SID;
   const twilioAuth = process.env.TWILIO_AUTH_TOKEN;
   const twilioFrom = process.env.TWILIO_PHONE_NUMBER;
@@ -557,6 +723,8 @@ Store Helpline: 9030982289`;
   }
 
   return {
+    email_sent: emailSuccess,
+    fcm_sent: fcmSuccess,
     sms_sent: smsSuccess,
     whatsapp_sent: whatsappSuccess,
     supabase_notification: supabaseNotificationSuccess,

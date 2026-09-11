@@ -256,7 +256,7 @@ export async function assignAgentToOrder(orderId: string, agentId: string) {
   // Fetch agent details for descriptive messages
   const { data: agent } = await supabase
     .from("delivery_agents")
-    .select("id, name, phone, status, vehicle_type, vehicle_number")
+    .select("id, name, phone, email, status, vehicle_type, vehicle_number")
     .eq("id", agentId)
     .single();
 
@@ -328,6 +328,7 @@ export async function assignAgentToOrder(orderId: string, agentId: string) {
         order_number: orderData.order_number || orderData.id.substring(0, 8).toUpperCase(),
         agent_name: agent.name,
         agent_phone: agent.phone,
+        agent_email: agent.email,
         customer_name: recipientName,
         customer_phone: recipientPhone,
         total_amount: orderData.grand_total || orderData.total_amount || 0,
@@ -390,7 +391,7 @@ export async function sendAgentOrderAlert(orderId: string, agentId?: string) {
 
   const { data: agent, error: agentErr } = await supabase
     .from("delivery_agents")
-    .select("id, name, phone, status, vehicle_type, vehicle_number")
+    .select("id, name, phone, email, status, vehicle_type, vehicle_number")
     .eq("id", targetAgentId)
     .single();
 
@@ -430,6 +431,7 @@ export async function sendAgentOrderAlert(orderId: string, agentId?: string) {
     order_number: orderData.order_number || orderData.id.substring(0, 8).toUpperCase(),
     agent_name: agent.name,
     agent_phone: agent.phone,
+    agent_email: agent.email,
     customer_name: recipientName,
     customer_phone: recipientPhone,
     total_amount: orderData.grand_total || orderData.total_amount || 0,
