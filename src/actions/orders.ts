@@ -79,7 +79,7 @@ function formatOrderAddressData(order: any, fallbackAddress?: any) {
     : Number(order.subtotal ?? order.grand_total ?? order.total_amount ?? 0);
 
   // Free delivery threshold is > ₹499 (or if order.delivery_charge was recorded as 0)
-  const isFreeDelivery = itemsSubtotal > 499 || Number(order.delivery_charge) === 0;
+  const isFreeDelivery = itemsSubtotal > 299 || Number(order.delivery_charge) === 0;
   const deliveryCharge = isFreeDelivery ? 0 : (Number(order.delivery_charge) > 0 ? Number(order.delivery_charge) : 40);
   const handlingFee = 10.0;
   const discountAmount = Number(order.discount_amount) || 0;
@@ -93,8 +93,16 @@ function formatOrderAddressData(order: any, fallbackAddress?: any) {
   // Invoice Number
   const invoiceNumber = order.invoice_number || `INV-${order.id ? order.id.substring(0, 8).toUpperCase() : Date.now().toString().slice(-6)}`;
 
+  // Payment status resolution
+  const isCod = (order.payment_method || "").toLowerCase().includes("cod") || (order.payment_method || "").toLowerCase().includes("cash");
+  const isPaid = (order.payment_status || "").toLowerCase() === "paid" || (!isCod && order.payment_method);
+  const resolvedPaymentStatus = isPaid ? "Paid" : (order.payment_status || "Pending");
+  const resolvedPaymentMethod = order.payment_method || (isCod ? "Cash on Delivery" : "Online Payment (Razorpay)");
+
   return {
     ...order,
+    payment_status: resolvedPaymentStatus,
+    payment_method: resolvedPaymentMethod,
     delivery_address: formattedAddress,
     delivery_address_details: {
       type: addressType,
