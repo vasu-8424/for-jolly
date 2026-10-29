@@ -84,6 +84,23 @@ export function InvoiceTemplate({ order }: { order: any }) {
     order.delivery_address_details?.full_address ||
     "Main Road, Kakinada, Andhra Pradesh - 533001";
 
+  const landmark = order.delivery_landmark || order.delivery_address_details?.landmark || "";
+  const latitude = order.delivery_latitude ?? order.delivery_address_details?.latitude;
+  const longitude = order.delivery_longitude ?? order.delivery_address_details?.longitude;
+  const numLat = latitude != null && latitude !== "" ? Number(latitude) : null;
+  const numLng = longitude != null && longitude !== "" ? Number(longitude) : null;
+  const hasCoordinates =
+    numLat !== null &&
+    numLng !== null &&
+    !isNaN(numLat) &&
+    !isNaN(numLng) &&
+    numLat !== 0 &&
+    numLng !== 0;
+  const googleMapsUrl =
+    order.delivery_address_details?.navigation_url ||
+    order.delivery_address_details?.google_maps_url ||
+    (hasCoordinates ? `https://www.google.com/maps/dir/?api=1&destination=${numLat},${numLng}&travelmode=driving` : null);
+
   const deliverySlot = order.delivery_slot || "15-Min Express Delivery";
 
   // Payment status resolution
@@ -173,6 +190,21 @@ export function InvoiceTemplate({ order }: { order: any }) {
             <p className="text-gray-700 mt-0.5 leading-snug line-clamp-2">
               {deliveryAddress}
             </p>
+            {landmark && (
+              <p className="text-gray-600 text-[10px] mt-0.5">
+                <span className="font-semibold text-gray-800">Landmark:</span> {landmark}
+              </p>
+            )}
+            {hasCoordinates && (
+              <p className="text-gray-600 text-[10px] mt-0.5">
+                <span className="font-semibold text-gray-800">GPS:</span> {numLat!.toFixed(6)}, {numLng!.toFixed(6)}
+                {googleMapsUrl && (
+                  <a href={googleMapsUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline ml-1 font-semibold">
+                    (Maps Link)
+                  </a>
+                )}
+              </p>
+            )}
             <div className="mt-1.5 pt-1 border-t border-gray-200 text-[10.5px] text-gray-700 flex flex-wrap gap-x-3">
               <p><span className="font-semibold text-gray-900">Phone:</span> {customerPhone}</p>
               {customerEmail && <p><span className="font-semibold text-gray-900">Email:</span> {customerEmail}</p>}

@@ -13,6 +13,7 @@ import { format } from "date-fns";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { AgentAssignmentCard } from "@/components/orders/agent-assignment-card";
+import { DeliveryLocationCard } from "@/components/orders/delivery-location-card";
 import { createClient } from "@/lib/supabase/client";
 
 export default function OrderDetailsPage({ params }: { params: Promise<{ id: string }> }) {
@@ -294,70 +295,34 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
                   <span className="text-sm text-muted-foreground">{order.profiles?.email || "No Email"}</span>
                 </div>
                 
-                <div className="pt-4 border-t mt-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Delivery Address
-                    </span>
-                    <Badge variant="secondary" className="text-[10px]">
-                      {order.delivery_address_details?.type || "Delivery Address"}
-                    </Badge>
-                  </div>
-
-                  <div className="flex items-start gap-3 bg-muted/30 p-3 rounded-xl border">
-                    <MapPin className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-                    <div className="space-y-1 flex-1">
-                      <p className="text-sm font-medium leading-relaxed text-foreground">
-                        {order.delivery_address || "No address provided."}
-                      </p>
-                      {order.delivery_address_details?.landmark && (
-                        <p className="text-xs text-muted-foreground">
-                          Landmark: {order.delivery_address_details.landmark}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  {order.delivery_address_details?.google_maps_url && (
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      asChild 
-                      className="w-full gap-2 border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400"
-                    >
-                      <a 
-                        href={order.delivery_address_details.google_maps_url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                      >
-                        <Navigation className="w-4 h-4" /> Open in Google Maps
-                      </a>
-                    </Button>
-                  )}
-
-                  {order.delivery_notes && (
-                    <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-xs">
-                      <MessageSquare className="w-4 h-4 shrink-0 mt-0.5" />
-                      <div>
-                        <span className="font-semibold block mb-0.5">Delivery Notes:</span>
-                        {order.delivery_notes}
+                {(order.delivery_notes || order.delivery_otp) && (
+                  <div className="pt-4 border-t mt-4 space-y-3">
+                    {order.delivery_notes && (
+                      <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-xs">
+                        <MessageSquare className="w-4 h-4 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-semibold block mb-0.5">Delivery Notes:</span>
+                          {order.delivery_notes}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  {order.delivery_otp && (
-                    <div className="flex items-center justify-between p-2.5 rounded-lg bg-primary/10 border border-primary/20 text-xs">
-                      <span className="font-medium text-muted-foreground flex items-center gap-1.5">
-                        <KeyRound className="w-3.5 h-3.5 text-primary" /> Delivery OTP:
-                      </span>
-                      <span className="font-mono font-bold text-sm text-primary">
-                        {order.delivery_otp}
-                      </span>
-                    </div>
-                  )}
-                </div>
+                    {order.delivery_otp && (
+                      <div className="flex items-center justify-between p-2.5 rounded-lg bg-primary/10 border border-primary/20 text-xs">
+                        <span className="font-medium text-muted-foreground flex items-center gap-1.5">
+                          <KeyRound className="w-3.5 h-3.5 text-primary" /> Delivery OTP:
+                        </span>
+                        <span className="font-mono font-bold text-sm text-primary">
+                          {order.delivery_otp}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
+
+            <DeliveryLocationCard order={order} />
 
             <AgentAssignmentCard order={order} onAssigned={fetchOrder} />
 

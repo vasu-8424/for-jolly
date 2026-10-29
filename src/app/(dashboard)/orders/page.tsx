@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, Clock, Download, ShoppingCart, Bike } from "lucide-react";
+import { Eye, Clock, Download, ShoppingCart, Bike, Navigation, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/shared/data-table";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -65,6 +65,9 @@ export default function OrdersPage() {
         const phone = order.delivery_address_details?.recipient_phone || order.profiles?.phone_number || "No Phone";
         const tag = order.delivery_address_details?.type;
 
+        const hasExactCoords = order.delivery_address_details?.has_exact_coordinates;
+        const navUrl = order.delivery_address_details?.navigation_url || order.delivery_address_details?.google_maps_url;
+
         return (
           <div className="flex flex-col max-w-xs space-y-0.5">
             <div className="flex items-center gap-1.5 flex-wrap">
@@ -74,12 +77,18 @@ export default function OrdersPage() {
                   {tag}
                 </Badge>
               )}
+              {hasExactCoords && (
+                <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 font-semibold text-emerald-600 border-emerald-500/30 bg-emerald-500/10">
+                  GPS
+                </Badge>
+              )}
             </div>
             <span className="text-xs font-mono text-muted-foreground">{phone}</span>
             {order.delivery_address && order.delivery_address !== "No address provided" && (
-              <span className="text-[11px] text-muted-foreground/80 truncate" title={order.delivery_address}>
-                📍 {order.delivery_address}
-              </span>
+              <div className="flex items-center gap-1 text-[11px] text-muted-foreground/80 truncate" title={order.delivery_address}>
+                <MapPin className="w-3 h-3 text-emerald-600 shrink-0" />
+                <span className="truncate">{order.delivery_address}</span>
+              </div>
             )}
           </div>
         );
@@ -140,6 +149,17 @@ export default function OrdersPage() {
         const order = row.original;
         return (
           <div className="flex items-center justify-end gap-2">
+            {order.delivery_address_details?.google_maps_url && (
+              <Button variant="ghost" size="icon" asChild title="Navigate in Google Maps">
+                <a
+                  href={order.delivery_address_details.navigation_url || order.delivery_address_details.google_maps_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Navigation className="w-4 h-4 text-emerald-600 hover:text-emerald-700" />
+                </a>
+              </Button>
+            )}
             <Button variant="ghost" size="icon" asChild title="View Details">
               <Link href={`/orders/${order.id}`}>
                 <Eye className="w-4 h-4 text-muted-foreground hover:text-primary" />

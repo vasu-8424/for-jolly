@@ -43,30 +43,67 @@ function formatOrderAddressData(order: any, fallbackAddress?: any) {
     recipientPhone = addr.phone;
   }
 
-  // GPS / Coordinates & location string
-  const latitude = addr?.latitude ?? addr?.lat ?? order.latitude ?? order.delivery_lat ?? order.lat ?? null;
-  const longitude = addr?.longitude ?? addr?.lng ?? order.longitude ?? order.delivery_lng ?? order.lng ?? null;
-  const rawLocation = addr?.location_string || addr?.location || addr?.full_address || addr?.formatted_address || order.delivery_location || order.location_string || order.location || order.delivery_address || "";
+  // Exact GPS Coordinates extraction & validation
+  const rawLat = order.delivery_latitude ?? order.latitude ?? addr?.latitude ?? order.delivery_lat ?? addr?.lat ?? null;
+  const rawLng = order.delivery_longitude ?? order.longitude ?? addr?.longitude ?? order.delivery_lng ?? addr?.lng ?? null;
 
-  // Combine full address string
-  const addressParts = [
-    houseFlat,
-    streetArea,
-    landmark,
-    city,
-    state && pincode ? `${state} - ${pincode}` : (state || pincode)
-  ].filter(Boolean);
+  const numLat = rawLat !== null && rawLat !== undefined && rawLat !== "" ? Number(rawLat) : null;
+  const numLng = rawLng !== null && rawLng !== undefined && rawLng !== "" ? Number(rawLng) : null;
 
-  const formattedAddress = addressParts.length > 0 
-    ? addressParts.join(", ") 
-    : (rawLocation || order.delivery_address || "Main Road, Kakinada, Andhra Pradesh - 533001");
+  const hasExactCoordinates =
+    numLat !== null &&
+    numLng !== null &&
+    !isNaN(numLat) &&
+    !isNaN(numLng) &&
+    numLat >= -90 &&
+    numLat <= 90 &&
+    numLng >= -180 &&
+    numLng <= 180 &&
+    (numLat !== 0 || numLng !== 0);
 
-  // Google Maps URL
+  const accuracy = order.delivery_location_accuracy !== null && order.delivery_location_accuracy !== undefined
+    ? Number(order.delivery_location_accuracy)
+    : null;
+
+  const finalLandmark = (order.delivery_landmark || addr?.landmark || landmark || "").trim();
+
+  // Snapshot address recorded directly at checkout (e.g. Hyderabad, or pinned location)
+  const snapshotAddr = (order.delivery_address_text || order.delivery_address || "").trim();
+
+  // Structured address parts fallback
+  const parts: string[] = [];
+  if (houseFlat) parts.push(houseFlat);
+  if (streetArea && streetArea !== houseFlat) parts.push(streetArea);
+  if (finalLandmark && !houseFlat.includes(finalLandmark)) {
+    parts.push(finalLandmark.startsWith("Near ") ? finalLandmark : `Near ${finalLandmark}`);
+  }
+  if (city && !houseFlat.toLowerCase().includes(city.toLowerCase())) parts.push(city);
+  if (state && pincode && !houseFlat.includes(pincode)) {
+    parts.push(`${state} - ${pincode}`);
+  } else if (pincode && !houseFlat.includes(pincode)) {
+    parts.push(pincode);
+  }
+
+  // ORDER SNAPSHOT ADDRESS IS KING:
+  // If order was placed to Hyderabad or a specific pinned location, NEVER override it with joined addresses table!
+  const formattedAddress = snapshotAddr.length > 0 && snapshotAddr !== "No address provided"
+    ? snapshotAddr
+    : (parts.length > 0 ? parts.join(", ") : (addr?.full_address || "Main Road, Kakinada, Andhra Pradesh - 533001"));
+
+  const rawLocation = formattedAddress;
+
+  // Google Maps Driving Navigation & Search Pin URLs
+  let navigationUrl: string | null = null;
   let googleMapsUrl: string | null = null;
-  if (latitude && longitude && Number(latitude) !== 0 && Number(longitude) !== 0) {
-    googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
+
+  if (hasExactCoordinates) {
+    navigationUrl = `https://www.google.com/maps/dir/?api=1&destination=${numLat},${numLng}&travelmode=driving`;
+    googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${numLat},${numLng}`;
   } else if (formattedAddress && formattedAddress !== "No address provided") {
-    googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(formattedAddress.toLowerCase().includes("kakinada") ? formattedAddress : `${formattedAddress}, Kakinada, Andhra Pradesh`)}`;
+    const searchAddress = formattedAddress.toLowerCase().includes("kakinada")
+      ? formattedAddress
+      : `${formattedAddress}, Kakinada, Andhra Pradesh`;
+    googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(searchAddress)}`;
   }
 
   // Compute exact financial breakdown
@@ -117,8 +154,11 @@ function formatOrderAddressData(order: any, fallbackAddress?: any) {
       recipient_email: profileEmail,
       full_address: formattedAddress,
       location_string: rawLocation || formattedAddress,
-      latitude: latitude,
-      longitude: longitude,
+      latitude: hasExactCoordinates ? numLat : null,
+      longitude: hasExactCoordinates ? numLng : null,
+      accuracy: accuracy,
+      has_exact_coordinates: hasExactCoordinates,
+      navigation_url: navigationUrl,
       google_maps_url: googleMapsUrl,
     },
     invoice_number: invoiceNumber,

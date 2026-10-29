@@ -16,6 +16,9 @@ export async function POST(request: NextRequest) {
       delivery_slot,
       delivery_otp,
       google_maps_url,
+      latitude,
+      longitude,
+      landmark,
       items,
       owner_phone = "9030982289",
     } = body;
@@ -39,6 +42,9 @@ export async function POST(request: NextRequest) {
       delivery_slot: delivery_slot || "15-Min Express Delivery",
       delivery_otp: delivery_otp || "N/A",
       google_maps_url,
+      latitude,
+      longitude,
+      landmark,
       items: items || [],
       owner_phone: String(owner_phone || "9030982289"),
     });

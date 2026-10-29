@@ -13,6 +13,9 @@ export interface OrderAlertPayload {
   delivery_slot?: string;
   delivery_otp?: string;
   google_maps_url?: string;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
+  landmark?: string | null;
   items?: Array<{
     title?: string;
     name?: string;
@@ -43,13 +46,32 @@ export async function dispatchOrderAlert(payload: OrderAlertPayload): Promise<Di
 
   // 1. Format clean address & Google Maps navigation link
   const rawAddress = (payload.delivery_address || "").trim() || "Kakinada, Andhra Pradesh";
+  const landmark = (payload.landmark || "").trim();
+  const numLat = payload.latitude != null ? Number(payload.latitude) : null;
+  const numLng = payload.longitude != null ? Number(payload.longitude) : null;
+  const hasExactCoords =
+    numLat !== null &&
+    numLng !== null &&
+    !isNaN(numLat) &&
+    !isNaN(numLng) &&
+    numLat !== 0 &&
+    numLng !== 0 &&
+    numLat >= -90 &&
+    numLat <= 90 &&
+    numLng >= -180 &&
+    numLng <= 180;
+
+  const drivingNavUrl = hasExactCoords
+    ? `https://www.google.com/maps/dir/?api=1&destination=${numLat},${numLng}&travelmode=driving`
+    : null;
   const searchAddress = rawAddress.toLowerCase().includes("kakinada")
     ? rawAddress
     : `${rawAddress}, Kakinada, Andhra Pradesh`;
+  const fallbackSearchUrl = hasExactCoords
+    ? `https://www.google.com/maps/search/?api=1&query=${numLat},${numLng}`
+    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(searchAddress)}`;
 
-  const mapsUrl =
-    payload.google_maps_url ||
-    `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(searchAddress)}`;
+  const mapsUrl = drivingNavUrl || payload.google_maps_url || fallbackSearchUrl;
 
   // 2. Format Items text
   const itemsText = Array.isArray(payload.items) && payload.items.length > 0
@@ -79,9 +101,9 @@ Name: ${payload.customer_name || "Customer"}
 Phone: ${payload.customer_phone || "N/A"}
 
 📍 DELIVERY ADDRESS:
-${rawAddress}
+${rawAddress}${landmark ? `\nLandmark: Near ${landmark}` : ""}${hasExactCoords ? `\nExact Coordinates: ${numLat}, ${numLng}` : ""}
 
-🗺️ GOOGLE MAPS LINK:
+🗺️ ONE-TAP GOOGLE MAPS NAVIGATION:
 ${mapsUrl}
 
 📦 ORDER ITEMS:
@@ -122,21 +144,32 @@ Store Owner Phone: ${ownerPhone}`;
   }
 
   // --- CHANNEL 2: Direct Email via Nodemailer (SMTP / Gmail) ---
-  const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER || "kakinadafresh@gmail.com";
-  const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASSWORD;
+  const smtpUser = (process.env.SMTP_USER || process.env.GMAIL_USER || "kakinadafresh@gmail.com").trim();
+  const rawPass = process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASSWORD || "";
+  const smtpPass = rawPass.trim().replace(/\s+/g, "");
 
   if (smtpPass) {
     try {
-      const transporter = nodemailer.createTransport({
-        service: process.env.SMTP_SERVICE || (smtpUser.includes("@gmail.com") ? "gmail" : undefined),
-        host: process.env.SMTP_HOST || (smtpUser.includes("@gmail.com") ? "smtp.gmail.com" : undefined),
-        port: Number(process.env.SMTP_PORT) || 465,
-        secure: process.env.SMTP_SECURE !== "false",
-        auth: {
-          user: smtpUser,
-          pass: smtpPass,
-        },
-      });
+      const isGmail = smtpUser.toLowerCase().includes("@gmail.com");
+      const transporter = nodemailer.createTransport(
+        isGmail
+          ? {
+              service: "gmail",
+              auth: {
+                user: smtpUser,
+                pass: smtpPass,
+              },
+            }
+          : {
+              host: process.env.SMTP_HOST || "smtp.gmail.com",
+              port: Number(process.env.SMTP_PORT) || 465,
+              secure: process.env.SMTP_SECURE !== "false",
+              auth: {
+                user: smtpUser,
+                pass: smtpPass,
+              },
+            }
+      );
 
       const htmlContent = `
         <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
@@ -208,9 +241,18 @@ Store Owner Phone: ${ownerPhone}`;
 
       emailSuccess = true;
     } catch (mailErr: any) {
-      errors.push(`Nodemailer email error: ${mailErr?.message}`);
+      const isBadCreds =
+        mailErr?.message?.includes("535") ||
+        mailErr?.message?.includes("BadCredentials") ||
+        mailErr?.message?.includes("Username and Password not accepted");
+      const helpfulMsg = isBadCreds
+        ? `Gmail Authentication Failed (535 BadCredentials): Google rejected the App Password for ${smtpUser}. Please generate a new 16-character Google App Password for ${smtpUser} at https://myaccount.google.com/apppasswords and update GMAIL_APP_PASSWORD in .env.`
+        : `Nodemailer email error: ${mailErr?.message}`;
+      console.error("[Order Alert Email]", helpfulMsg);
+      errors.push(helpfulMsg);
     }
   } else {
+    errors.push(`Nodemailer email skipped: No GMAIL_APP_PASSWORD or SMTP_PASS configured in .env.`);
     // FormSubmit / Webhook fallback
     try {
       await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(ownerEmail)}`, {
@@ -384,22 +426,31 @@ export async function dispatchAgentAssignmentAlert(
   const locationStr = (payload.location_string || "").trim();
   const landmark = (payload.landmark || "").trim();
 
-  let mapsUrl = payload.google_maps_url;
-  if (!mapsUrl) {
-    if (
-      payload.latitude &&
-      payload.longitude &&
-      Number(payload.latitude) !== 0 &&
-      Number(payload.longitude) !== 0
-    ) {
-      mapsUrl = `https://www.google.com/maps/search/?api=1&query=${payload.latitude},${payload.longitude}`;
-    } else {
-      const searchAddress = rawAddress.toLowerCase().includes("kakinada")
-        ? rawAddress
-        : `${rawAddress}, Kakinada, Andhra Pradesh`;
-      mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(searchAddress)}`;
-    }
-  }
+  const numLat = payload.latitude != null ? Number(payload.latitude) : null;
+  const numLng = payload.longitude != null ? Number(payload.longitude) : null;
+  const hasExactCoords =
+    numLat !== null &&
+    numLng !== null &&
+    !isNaN(numLat) &&
+    !isNaN(numLng) &&
+    numLat !== 0 &&
+    numLng !== 0 &&
+    numLat >= -90 &&
+    numLat <= 90 &&
+    numLng >= -180 &&
+    numLng <= 180;
+
+  const drivingNavUrl = hasExactCoords
+    ? `https://www.google.com/maps/dir/?api=1&destination=${numLat},${numLng}&travelmode=driving`
+    : null;
+  const searchAddress = rawAddress.toLowerCase().includes("kakinada")
+    ? rawAddress
+    : `${rawAddress}, Kakinada, Andhra Pradesh`;
+  const fallbackSearchUrl = hasExactCoords
+    ? `https://www.google.com/maps/search/?api=1&query=${numLat},${numLng}`
+    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(searchAddress)}`;
+
+  const mapsUrl = drivingNavUrl || payload.google_maps_url || fallbackSearchUrl;
 
   // 2. Format Items text with Cuts & Extras
   const itemsText =
@@ -443,9 +494,9 @@ Name: ${payload.customer_name || "Customer"}
 Phone: ${payload.customer_phone || "N/A"}
 
 📍 DELIVERY LOCATION:
-${rawAddress}${landmark ? `\nLandmark: Near ${landmark}` : ""}${locationStr && locationStr !== rawAddress ? `\nLocation Area: ${locationStr}` : ""}
+${rawAddress}${landmark ? `\nLandmark: Near ${landmark}` : ""}${hasExactCoords ? `\nExact Coordinates: ${numLat}, ${numLng}` : ""}${locationStr && locationStr !== rawAddress ? `\nLocation Area: ${locationStr}` : ""}
 
-🗺️ GOOGLE MAPS NAVIGATION:
+🗺️ ONE-TAP GOOGLE MAPS DRIVING NAVIGATION:
 ${mapsUrl}
 ${payload.delivery_notes ? `\n📝 Customer Note: ${payload.delivery_notes}` : ""}
 📦 ITEMS TO DELIVER:
@@ -487,8 +538,9 @@ Store Helpline: 9030982289`;
   }
 
   // --- CHANNEL 2: Direct Email via Nodemailer (Gmail App Password) ---
-  const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER || "kakinadafresh@gmail.com";
-  const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASSWORD;
+  const smtpUser = (process.env.SMTP_USER || process.env.GMAIL_USER || "kakinadafresh@gmail.com").trim();
+  const rawPass = process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASSWORD || "";
+  const smtpPass = rawPass.trim().replace(/\s+/g, "");
 
   let agentEmail = payload.agent_email?.trim() || "";
   if (!agentEmail && cleanAgentPhone) {
@@ -510,16 +562,26 @@ Store Helpline: 9030982289`;
 
   if (smtpPass) {
     try {
-      const transporter = nodemailer.createTransport({
-        service: process.env.SMTP_SERVICE || (smtpUser.includes("@gmail.com") ? "gmail" : undefined),
-        host: process.env.SMTP_HOST || (smtpUser.includes("@gmail.com") ? "smtp.gmail.com" : undefined),
-        port: Number(process.env.SMTP_PORT) || 465,
-        secure: process.env.SMTP_SECURE !== "false",
-        auth: {
-          user: smtpUser,
-          pass: smtpPass,
-        },
-      });
+      const isGmail = smtpUser.toLowerCase().includes("@gmail.com");
+      const transporter = nodemailer.createTransport(
+        isGmail
+          ? {
+              service: "gmail",
+              auth: {
+                user: smtpUser,
+                pass: smtpPass,
+              },
+            }
+          : {
+              host: process.env.SMTP_HOST || "smtp.gmail.com",
+              port: Number(process.env.SMTP_PORT) || 465,
+              secure: process.env.SMTP_SECURE !== "false",
+              auth: {
+                user: smtpUser,
+                pass: smtpPass,
+              },
+            }
+      );
 
       const htmlContent = `
         <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
@@ -598,8 +660,18 @@ Store Helpline: 9030982289`;
 
       emailSuccess = true;
     } catch (mailErr: any) {
-      errors.push(`Nodemailer agent email error: ${mailErr?.message}`);
+      const isBadCreds =
+        mailErr?.message?.includes("535") ||
+        mailErr?.message?.includes("BadCredentials") ||
+        mailErr?.message?.includes("Username and Password not accepted");
+      const helpfulMsg = isBadCreds
+        ? `Nodemailer Gmail 535 BadCredentials: Google rejected the App Password for ${smtpUser}. Update GMAIL_APP_PASSWORD in .env.`
+        : `Nodemailer agent email error: ${mailErr?.message}`;
+      console.error("[Agent Assignment Email]", helpfulMsg);
+      errors.push(helpfulMsg);
     }
+  } else {
+    errors.push("Nodemailer agent email skipped: No GMAIL_APP_PASSWORD configured.");
   }
 
   // --- CHANNEL 3: Firebase Cloud Messaging (FCM Push Notification to Agent App) ---
